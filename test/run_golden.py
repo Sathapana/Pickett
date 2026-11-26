@@ -6,6 +6,10 @@ DPFIT, DPCAT, calbak).
     python test/run_golden.py -k spfit   # only cases whose name contains "spfit"
     python test/run_golden.py --no-build # use the executables already built
     python test/run_golden.py --update   # rewrite expected/ from this build
+    python test/run_golden.py --inprocess
+        # run SPCAT/SPFIT/DPCAT/DPFIT through the library entry points
+        # (pkselftest_sp / pkselftest_dp): one failing call, then each case
+        # twice in the same process; the second run's outputs are compared
 
 Each case lives in test/golden/<case>/:
 
@@ -45,6 +49,14 @@ import tempfile
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GOLDEN = os.path.join(REPO, "test", "golden")
+
+# --inprocess: program -> (self-test driver, run function)
+INPROCESS = {
+    "spcat": ("pkselftest_sp", "cat"),
+    "spfit": ("pkselftest_sp", "fit"),
+    "dpcat": ("pkselftest_dp", "cat"),
+    "dpfit": ("pkselftest_dp", "fit"),
+}
 
 DEFAULT_MODE = {".cat": "exact", ".egy": "exact"}
 DEFAULT_RTOL = 1e-6
@@ -191,15 +203,23 @@ def run_case(case, bindir, args):
     results = []
     work = tempfile.mkdtemp(prefix="pickett_%s_" % case["name"])
     indir = os.path.join(case["dir"], "input")
-    for fn in sorted(os.listdir(indir)):
+    inputs = sorted(os.listdir(indir))
+    for fn in inputs:
         shutil.copy(os.path.join(indir, fn), work)
 
     for i, step in enumerate(case["steps"]):
-        exe = program_path(step["program"], bindir)
+        prog = step["program"]
+        mode = None
+        if args.inprocess and prog in INPROCESS:
+            prog, mode = INPROCESS[prog]
+        exe = program_path(prog, bindir)
         if exe is None:
-            results.append((step["program"], False, "executable not found in %s" % bindir))
+            results.append((prog, False, "executable not found in %s" % bindir))
             return results, work
-        cmd = [exe] + step.get("args", [])
+        if mode is None:
+            cmd = [exe] + step.get("args", [])
+        else:
+            cmd = [exe, mode] + step.get("args", []) + ["--"] + inputs
         log = os.path.join(work, "_step%d_%s.log" % (i + 1, step["program"]))
         with open(log, "w") as lf:
             try:
@@ -259,6 +279,9 @@ def main():
                     help="relative tolerance for numeric files (default %g)" % DEFAULT_RTOL)
     ap.add_argument("--timeout", type=float, default=600, help="seconds per program run")
     ap.add_argument("--keep", action="store_true", help="keep the temporary run directories")
+    ap.add_argument("--inprocess", action="store_true",
+                    help="run SPCAT/SPFIT/DPCAT/DPFIT in-process via pkselftest_sp/_dp, "
+                         "twice per case, after one deliberately failing call")
     ap.add_argument("--update", action="store_true",
                     help="copy this build's outputs into expected/ instead of comparing")
     ap.add_argument("-v", "--verbose", action="store_true", help="show make output")
@@ -269,6 +292,8 @@ def main():
         sys.exit("error: no cases found in %s" % args.golden)
     if not args.no_build:
         programs = {s["program"] for c in cases for s in c["steps"]}
+        if args.inprocess:
+            programs = {INPROCESS[p][0] if p in INPROCESS else p for p in programs}
         build(find_make(args.make), programs, args.clean, args.make_arg, args.verbose)
 
     nfail = ntotal = 0

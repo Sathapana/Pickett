@@ -534,7 +534,7 @@ const int ii, neqi;
         val -= ctrans(k, i, ii, qn, neqi, swk);
         if (fabs(val) > 1.e-10) {
           puts(" center Itot matrix not symmetric");
-          exit(EXIT_FAILURE);
+          pk_fail(EXIT_FAILURE);
         }
       }
     }
@@ -582,7 +582,7 @@ const int ii, neqi;
           val += ctrans(j + ioff, i, ii, qn0, neqi, swk);
           if (fabs(val) > 1.e-10) {
             puts(" non-center Itot matrix is not antisymmetric");
-            exit(EXIT_FAILURE);
+            pk_fail(EXIT_FAILURE);
           }
         }
         sum *= cfac;

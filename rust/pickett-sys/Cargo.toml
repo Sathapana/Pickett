@@ -1,0 +1,13 @@
+[package]
+name = "pickett-sys"
+version = "0.1.0"
+edition.workspace = true
+description = "Runs SPCAT/SPFIT/DPCAT/DPFIT in-process by compiling and linking the CALPGM C code"
+publish = false
+build = "build.rs"
+links = "pickett"
+
+[dependencies]
+
+[dev-dependencies]
+pickett-io = { path = "../pickett-io" }

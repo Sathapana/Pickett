@@ -20,9 +20,10 @@ A user manual in Thai, with a step-by-step quick start and troubleshooting, is i
 8. [Test case and verification](#test-case-and-verification)
 9. [Auxiliary programs](#auxiliary-programs)
 10. [Rust file library: pickett-io](#rust-file-library-pickett-io)
-11. [Legacy, alternate and unused files](#legacy-alternate-and-unused-files)
-12. [Known issues and caveats](#known-issues-and-caveats)
-13. [References](#references)
+11. [Rust in-process runner: pickett-sys](#rust-in-process-runner-pickett-sys)
+12. [Legacy, alternate and unused files](#legacy-alternate-and-unused-files)
+13. [Known issues and caveats](#known-issues-and-caveats)
+14. [References](#references)
 
 ---
 
@@ -57,6 +58,9 @@ e2a6f56 First commit based on HSPM's code from 2008
 | [calcat.c](calcat.c) | `spcat`, `dpcat` | General frequency/intensity calculator; writes the `.cat` catalog and the partition function |
 | [sortsub.c](sortsub.c) | (linked with calcat, sortn) | External merge/heap sort used to sort the `.cat` file at the end of SPCAT |
 | [calmrg.c](calmrg.c) | `calmrg` | Merges a calculated `.cat` with experimental `.lin` lines |
+| [calcatm.c](calcatm.c), [calfitm.c](calfitm.c) | `spcat`/`dpcat`, `spfit`/`dpfit` | Two-line `main()`s that call `calcat_run()` / `calfit_run()` |
+| [pickett.h](pickett.h) | (library) | Public C entry points: `calcat_run`, `calfit_run`, `pk_library_mode`, `pk_fail` (see [Library entry points](#library-entry-points-picketth)) |
+| [pkselftest.c](pkselftest.c) | `pkselftest_sp`, `pkselftest_dp` | Test driver that runs the library twice in one process (see [Regression tests](#regression-tests)) |
 
 ### Hamiltonian modules (one is linked into each fitter/calculator)
 
@@ -127,6 +131,33 @@ flowchart LR
 
 Parameter and dipole identifiers are stored internally as packed **BCD** (`bcd_t`, see `getbcd`/`putbcd` in `ulib.c`). This lets IDs hold more digits than a `long` can, for example for `nvib > 99`.
 
+### Library entry points (`pickett.h`)
+
+The programs can be called as functions, so other code can run them in its own process. The command-line programs are two-line `main()`s in `calcatm.c` / `calfitm.c`.
+
+| Function | Purpose |
+|---|---|
+| `int calcat_run(int argc, char *argv[])` | SPCAT, or DPCAT when linked with `dpi.c`. The arguments are the same as on the command line. Returns 0 or a failure status. |
+| `int calfit_run(int argc, char *argv[])` | SPFIT, or DPFIT when linked with `dpi.c`. |
+| `void pk_library_mode(int on)` | `on != 0`: don't install the Ctrl-C (SIGINT) handler, so the host program keeps its own. |
+| `void pk_fail(int code)` | Used inside the library in place of `exit(EXIT_FAILURE)`. |
+
+How a fatal error is handled:
+1. Every `exit(EXIT_FAILURE)` in the library sources is now `pk_fail()`. This covers `calcat.c`, `calfit.c`, `subfit.c`, `spinv.c`, `spinit.c`, `dpi.c`, and `fopenq()`/`mallocq()` in `slibgcc.c`.
+2. Each run function sets a `setjmp` point. `pk_fail()` jumps back to it, and the run function returns the status instead of ending the process. The error message is still printed on stdout.
+3. Files opened with `fopenq()` are tracked: `calpgm.h` maps `fclose` to `pk_fclose`. When a run ends, successfully or not, the files that are still open get closed.
+
+State that would leak from one run into the next is reset at the start of each SPCAT run:
+- `qsum` (the partition-function sums)
+- the `ibufof()` scratch-buffer state
+
+SPFIT's `lbufof()` already resets itself. `python test/run_golden.py --inprocess` checks this (see [Regression tests](#regression-tests)).
+
+Limits of this layer, to be removed in later phases:
+- **Not thread-safe.** The code keeps state in static variables, so only one run can be active in a process at a time.
+- **Memory leaks on failure.** If a run fails in the middle of a calculation, the memory it allocated is not freed.
+- **Files and stdout only.** Input and output still go through files, and progress is printed on stdout.
+
 ### Data flow
 
 ```mermaid
@@ -159,6 +190,7 @@ The active makefile is [Makefile](Makefile) (gcc, `-g -O3 -Wall`):
 ```sh
 make            # spfit spcat calmrg dpfit dpcat calbak
 make all        # also iamcalc moiam stark termval sortn reassign sortegy iambak
+make selftest   # pkselftest_sp, pkselftest_dp (in-process test drivers)
 make install    # moves the default executables to /usr/local/bin
 make clean      # removes executables, *.o and splib.a
 ```
@@ -183,14 +215,14 @@ The core programs are self-contained, so plain gcc works. These commands were te
 
 ```sh
 LIB="ulib.c cnjj.c slibgcc.c catutil.c lsqfit.c dblas.c"
-gcc -O2 -o spfit calfit.c subfit.c spinv.c spinit.c $LIB -lm
-gcc -O2 -o spcat calcat.c sortsub.c spinv.c spinit.c $LIB -lm
-gcc -O2 -o dpfit calfit.c subfit.c dpi.c $LIB -lm
-gcc -O2 -o dpcat calcat.c sortsub.c dpi.c $LIB -lm
+gcc -O2 -o spfit calfitm.c calfit.c subfit.c spinv.c spinit.c $LIB -lm
+gcc -O2 -o spcat calcatm.c calcat.c sortsub.c spinv.c spinit.c $LIB -lm
+gcc -O2 -o dpfit calfitm.c calfit.c subfit.c dpi.c $LIB -lm
+gcc -O2 -o dpcat calcatm.c calcat.c sortsub.c dpi.c $LIB -lm
 gcc -O2 -o calmrg calmrg.c $LIB -lm
 ```
 
-The code is K&R/ANSI C from ~1999–2008, so a modern compiler prints many warnings (implicit `int`, old-style definitions). Add `-w` to silence them. Recent gcc/clang releases that default to C23 may reject the K&R function definitions in some files. If that happens, add `-std=gnu99` (or `-std=gnu89`).
+The code is K&R/ANSI C from ~1999–2008, so a modern compiler prints many warnings (implicit `int`, old-style definitions). Add `-w` to silence them. gcc 15 and later default to C23, which rejects the old-style declarations: add `-std=gnu17`. That was tested with MSYS2's 64-bit gcc 16.2, and it is what `pickett-sys` uses.
 
 ### Memory limits
 
@@ -391,6 +423,20 @@ python test/run_golden.py --update -k dpfit             # accept new outputs (re
 
 All cases pass with the default `-O3` (x87) build, and also with `-O0` and `-O2 -msse2 -mfpmath=sse` builds (MinGW gcc 6.3, Windows 11). The SSE build changes the fitted constants by about 1e-10 relative, which is well inside the tolerance. Any change to the C code should keep `python test/run_golden.py` passing.
 
+**In-process mode.** `--inprocess` checks the library entry points instead of the executables:
+
+```sh
+python test/run_golden.py --inprocess
+```
+
+SPCAT, SPFIT, DPCAT and DPFIT steps then run through `pkselftest_sp` / `pkselftest_dp` (built with `make selftest`). In one process, the driver:
+1. calls the run function on a missing file and checks that it returns a failure status, not an exit;
+2. runs the case;
+3. restores the input files;
+4. runs the case again.
+
+The outputs compared are those of the second run, so state left over from the first run, or from the failure, shows up as a difference. The check is known to work: with the `qsum` reset in `calcat.c` removed, the second SPCAT run reports the partition function doubled and `prolate.out` fails.
+
 ---
 
 ## Auxiliary programs
@@ -460,6 +506,50 @@ Points to know:
 
 ---
 
+## Rust in-process runner: pickett-sys
+
+[rust/pickett-sys](rust/pickett-sys) compiles the C code and links it into Rust, so SPCAT, SPFIT, DPCAT and DPFIT run inside the calling process (see [Library entry points](#library-entry-points-picketth)).
+
+```rust
+use pickett_sys::{run_in, Program};
+
+// reads data/mol.int and data/mol.var, writes data/mol.cat, .out, ...
+run_in(Program::Spcat, std::path::Path::new("data"), "mol")?;
+// then read the results with pickett-io
+let cat = pickett_io::CatFile::parse(&std::fs::read_to_string("data/mol.cat")?)?;
+```
+
+| Item | Notes |
+|---|---|
+| `run(program, args)` | Same arguments as the command line, e.g. `["mol"]` |
+| `run_in(program, dir, base)` | Passes every `<dir>/<base>.<ext>` explicitly, so directory names with dots are safe |
+| `RunError::Failed { program, status }` | A fatal error in the C code. The process keeps running, and the message is on stdout |
+| `ffi` | The raw `extern "C"` functions |
+
+**How it builds.** `build.rs` has no dependencies. It calls gcc and `ar` directly and puts both variants into one `libpickett.a`:
+- The SPCAT/SPFIT objects get run functions `pk_spcat_run` / `pk_spfit_run`.
+- The DPCAT/DPFIT objects get `pk_dpcat_run` / `pk_dpfit_run`, and every global symbol of `calcat.c`, `calfit.c`, `subfit.c` and `dpi.c` is prefixed `dp_` with `-D` (the list is `DP_RENAMES`, found with `nm`).
+- Everything is compiled with `-std=gnu17`.
+
+**Compiler.** The build uses the first of these whose `gcc -dumpmachine` matches the target architecture: `PICKETT_CC`, `CC`, `C:\msys64\mingw64\bin\gcc.exe` (Windows), `gcc`. On Windows the Rust target must be `x86_64-pc-windows-gnu`, and the 32-bit MinGW gcc cannot be used for it. Install a 64-bit one with MSYS2:
+
+```sh
+pacman -S mingw-w64-x86_64-gcc
+```
+
+This was tested with gcc 16.2 (MSYS2) and Rust 1.100 on Windows 11. Linking works with Rust's own MinGW linker.
+
+**Concurrency.** Calls are serialized with a global mutex, because the C code is not reentrant. Calling from several threads is safe, but the runs happen one after another.
+
+**Tests** (`cargo test -p pickett-sys`):
+- Every SPCAT/SPFIT/DPCAT/DPFIT golden case runs twice in-process. `.cat`/`.egy` must match exactly, and `.par`/`.var`/`.bak` must match within `1e-6` relative. The 64-bit build fits A = 60778.54915641392 MHz against the golden 60778.54915641401.
+- A failing run returns `Err`, and the next run still works.
+- Three threads run at once.
+- A directory name with dots works.
+- Deliberately corrupted expected files make the test fail, so the comparison is known to work.
+
+---
+
 ## Legacy, alternate and unused files
 
 | File | Status |
@@ -478,8 +568,9 @@ Points to know:
 ## Known issues and caveats
 
 1. **Partition-function grid edge case.** If the `.int` `TEMP` is exactly 0, the 0 K grid point remains and causes a division by zero. `TEMP = 0` is not physically valid for SPCAT anyway.
-2. **Legacy C.** K&R definitions, `gets()` in the catalog utilities, and implicit `int main()` all trigger warnings. Very new compilers may need `-std=gnu99`.
+2. **Legacy C.** K&R definitions, `gets()` in the catalog utilities, and implicit `int main()` all trigger warnings. gcc 15+ (C23 by default) needs `-std=gnu17`.
 3. **The PDF manuals' text layer is font-mangled** (ligatures and Greek letters encoded oddly). Read them in a PDF viewer rather than extracting the text.
+4. **Library limits.** The run functions are not thread-safe, and memory is not freed after a failure in the middle of a calculation (see [Library entry points](#library-entry-points-picketth)).
 
 ### Fixed build issues
 

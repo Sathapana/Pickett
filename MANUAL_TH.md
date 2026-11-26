@@ -18,7 +18,8 @@
 8. [ปัญหาที่พบบ่อยและวิธีแก้](#ch8)
 9. [อภิธานศัพท์ ไทย–อังกฤษ](#ch9)
 10. [อ่านและเขียนไฟล์ด้วย Rust (`pickett-io`)](#ch10)
-11. [เอกสารอ้างอิง](#ch11)
+11. [รัน SPCAT/SPFIT จาก Rust (`pickett-sys`)](#ch11)
+12. [เอกสารอ้างอิง](#ch12)
 
 ---
 
@@ -85,7 +86,7 @@ sudo make install   # (ไม่บังคับ) ย้าย spfit spcat cal
 | `make all` | build ทุกโปรแกรม รวมโปรแกรมเสริม |
 | `make clean` | ลบไฟล์ที่ build แล้วทั้งหมด (`*.o`, `splib.a`, executables) |
 
-> **หมายเหตุ:** ถ้าใช้ compiler รุ่นใหม่มาก (เช่น gcc 14 ขึ้นไป) แล้วเจอ error เกี่ยวกับการประกาศฟังก์ชันแบบเก่า (K&R) ให้เพิ่ม `-std=gnu99` ใน `CFLAGS`
+> **หมายเหตุ:** gcc 15 ขึ้นไปใช้มาตรฐาน C23 เป็นค่าเริ่มต้น ซึ่งไม่รับการประกาศฟังก์ชันแบบเก่า (K&R) ถ้าเจอ error แบบนี้ให้เพิ่ม `-std=gnu17` ใน `CFLAGS` เช่น `make all CFLAGS="-O2 -w -std=gnu17"`
 
 ---
 
@@ -700,7 +701,73 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 <a id="ch11"></a>
 
-## 11. เอกสารอ้างอิง
+## 11. รัน SPCAT/SPFIT จาก Rust (`pickett-sys`)
+
+`pickett-sys` อยู่ในโฟลเดอร์ [rust/pickett-sys](rust/pickett-sys) ใช้เรียก SPCAT, SPFIT, DPCAT และ DPFIT จากโปรแกรม Rust ได้โดยตรง เพราะโค้ด C ถูกคอมไพล์รวมเข้าไปในโปรแกรมของเรา จึงไม่ต้องหาไฟล์ `.exe` และไม่ต้องเปิด process ใหม่ ถ้าโปรแกรม C เจอข้อผิดพลาด ฟังก์ชันจะคืนค่า error กลับมา โปรแกรมของเราจะไม่ถูกปิดไปด้วย
+
+### สิ่งที่ต้องมีเพิ่ม: gcc แบบ 64-bit
+
+`pickett-sys` ต้องคอมไพล์โค้ด C ด้วย gcc ที่ตรงกับ Rust ซึ่งบน Windows คือแบบ 64-bit gcc ของ MinGW รุ่นเดิม (`C:\MinGW`) เป็นแบบ 32-bit จึงใช้ไม่ได้ วิธีติดตั้งที่ทดสอบแล้ว:
+
+1. ติดตั้ง [MSYS2](https://www.msys2.org/)
+2. เปิด terminal "MSYS2" แล้วรัน:
+
+```sh
+pacman -S mingw-w64-x86_64-gcc
+```
+
+ตอน build โปรแกรมจะหา `C:\msys64\mingw64\bin\gcc.exe` ให้เอง ถ้าติดตั้งไว้ที่อื่น ให้ตั้งตัวแปร `PICKETT_CC` เป็น path ของ gcc
+
+บน Linux/macOS ใช้ gcc ที่มีอยู่ในเครื่องได้เลย
+
+### ลองรัน
+
+```sh
+cd rust
+cargo test -p pickett-sys
+```
+
+test ชุดนี้รันทุกกรณีใน `test/golden/` แบบ in-process รอบละสองครั้ง แล้วเทียบผลกับไฟล์อ้างอิง ระหว่างที่รันจะเห็นข้อความจากโปรแกรม C บนหน้าจอจำนวนมาก ซึ่งเป็นเรื่องปกติ
+
+### เขียนโปรแกรมเอง
+
+เพิ่มทั้งสอง library ใน `Cargo.toml` (แก้ path ให้ชี้ไปที่ repo นี้):
+
+```toml
+[dependencies]
+pickett-sys = { path = "../Pickett/rust/pickett-sys" }
+pickett-io = { path = "../Pickett/rust/pickett-io" }
+```
+
+ตัวอย่างนี้ทำนายสเปกตรัมจากไฟล์ `data/mol.int` และ `data/mol.var` แล้วอ่านผลจาก `.cat`:
+
+```rust
+use pickett_io::CatFile;
+use pickett_sys::{run_in, Program};
+use std::path::Path;
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = Path::new("data");
+    run_in(Program::Spcat, dir, "mol")?; // เขียน data/mol.cat, mol.out, ...
+    let cat = CatFile::parse(&std::fs::read_to_string(dir.join("mol.cat"))?)?;
+    println!("{} lines", cat.lines.len());
+    Ok(())
+}
+```
+
+ถ้าจะฟิตให้ใช้ `Program::Spfit` (อ่าน `mol.par` และ `mol.lin`) ส่วนโมเลกุลสถานะ ²Π ใช้ `Program::Dpcat` หรือ `Program::Dpfit`
+
+### ข้อควรรู้
+
+- **รันได้ทีละครั้ง:** โค้ด C เก็บสถานะไว้ในตัวแปร static จึงรันพร้อมกันหลายงานไม่ได้ ถ้าเรียกจากหลาย thread library จะให้รอคิวกันเอง ผลจึงยังถูกต้อง แต่ไม่ได้เร็วขึ้น (การรันขนานอยู่ในแผน Phase 4)
+- **ยังใช้ไฟล์:** ข้อมูลเข้าและผลลัพธ์ยังเป็นไฟล์ เหมือนการรันโปรแกรมปกติ ใช้ `pickett-io` อ่านผล ส่วน API ที่รับส่งข้อมูลในหน่วยความจำโดยตรงอยู่ในแผน Phase 3
+- **เมื่อเกิด error:** จะได้ `RunError::Failed { program, status }` ส่วนข้อความอธิบาย error ยังพิมพ์ออกหน้าจอ ถ้า error เกิดกลางการคำนวณ หน่วยความจำที่จองไว้จะไม่ถูกคืน จึงไม่ควรปล่อยให้ error ซ้ำ ๆ หลายพันครั้งในโปรแกรมที่รันยาว
+
+---
+
+<a id="ch12"></a>
+
+## 12. เอกสารอ้างอิง
 
 - [documentation.md](documentation.md): เอกสารสำหรับนักพัฒนา (สถาปัตยกรรม การ build รายละเอียดโค้ด)
 - [spinv.pdf](spinv.pdf): คู่มือต้นฉบับของ SPFIT/SPCAT รวมรหัสพารามิเตอร์และรหัสไดโพลทั้งหมด (ควรเปิดด้วยโปรแกรมอ่าน PDF เพราะข้อความที่ copy ออกมาจะเพี้ยน)

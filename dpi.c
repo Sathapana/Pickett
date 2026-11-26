@@ -396,7 +396,7 @@ double *egy, *t, *dedp, *pmix;
   ierr = hdiag(nsize, nsize, t, egy, pmix, iqnsep);
   if (ierr < 0) {
     printf("diagonalization failure %d\n", ierr);
-    exit(EXIT_FAILURE);
+    pk_fail(EXIT_FAILURE);
   }
   ordblk(nsize, nsize, iqnsep, t, egy, isblk, pmix, jq);
   for (i = 0; i < nsize; ++i)

@@ -16,5 +16,7 @@
 /reassign
 /sortegy
 /iambak
+/pkselftest_sp
+/pkselftest_dp
 # Rust build output
 /rust/target/

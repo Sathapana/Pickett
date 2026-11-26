@@ -277,7 +277,7 @@ double *egy, *t, *dedp, *pmix;
 
   if (ndmx <= 0) {
     puts("working vectors not allocated");
-    exit(EXIT_FAILURE);
+    pk_fail(EXIT_FAILURE);
   }
   dbar = &wk[ndmx];
   ndm = nsize;
@@ -419,7 +419,7 @@ double *egy, *t, *dedp, *pmix;
                 if (ncos == 0) continue;     /* get next parameter */
                 printf("DIRCOS WORKING VECTOR TOO SHORT IN HAMX BY %d\n",
                        ncos);
-                exit(EXIT_FAILURE);
+                pk_fail(EXIT_FAILURE);
               }
               if (TEST(idflags, MNOUNIT)) 
                 isunit = 0;
@@ -558,7 +558,7 @@ double *egy, *t, *dedp, *pmix;
         if (nqnsep < 0) {
           printf(" diagonalization failure, err = %d in block %d, %d\n",
                  nqnsep, iblk, nsize);
-          exit(EXIT_FAILURE);
+          pk_fail(EXIT_FAILURE);
         }
       	switch (glob.idiag) {
       	default:  /*  energy sort of subblock */
@@ -2096,7 +2096,7 @@ double *s;
 
   if (ndmx <= 0) {
     puts("working vectors not allocated");
-    exit(EXIT_FAILURE);
+    pk_fail(EXIT_FAILURE);
   }
   dipoff = idipoff;
   if (dipoff >= nddip) 
@@ -2181,7 +2181,7 @@ double *s;
           if (ncos == 0) continue;
           if (ncos < 0) {
             puts("DIRCOS WORKING VECTOR TOO SHORT IN INTENS");
-            exit(EXIT_FAILURE);
+            pk_fail(EXIT_FAILURE);
           }
           dd = dip[i] * pdip->fac;
           /* correct for special cases */
@@ -2549,7 +2549,7 @@ char *namfil;
   }
   if (k != 0) {
     puts("L DOUBLETS SHOULD BE IN PAIRS");
-    exit(EXIT_FAILURE);
+    pk_fail(EXIT_FAILURE);
   }
   k = 0;
   pvinfo = vinfo;
@@ -4040,7 +4040,7 @@ SVIB *pvinfo;
   i = (int)(nsstat << glob.msshft);
   if (i < 0 || (size_t)(i >> glob.msshft) != nl) {
     puts("spin problem too big");
-    exit(EXIT_FAILURE);
+    pk_fail(EXIT_FAILURE);
   }
   nitot = 0; iret = nspinv; i = pvinfo->gsym;
   if (ODD(i)) { 
@@ -4153,7 +4153,7 @@ void setsp(void)
       }
       if (i < nspin) {
         puts("spins under Itot should be the same");
-        exit(EXIT_FAILURE);
+        pk_fail(EXIT_FAILURE);
       }
       pitmix0 = get_itmix(ii, nitot);
       if (nitot < 3)

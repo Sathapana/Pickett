@@ -22,6 +22,63 @@
 
 /* potentially system dependent functions */
 
+/***************** run control for library use (pickett.h) *************/
+/* pk_fail() replaces exit(EXIT_FAILURE): when a run function is active  */
+/* it closes the files opened with fopenq() and longjmps back to it.     */
+static /*@null@*/ jmp_buf *pk_jump = NULL;
+static int pk_libmode = 0;
+#define PK_MAXFILES 64
+static /*@null@*/ FILE *pk_files[PK_MAXFILES];
+
+void pk_library_mode(int on)
+{
+  pk_libmode = on;
+}
+
+void pk_set_jump(jmp_buf *jb)
+{
+  pk_jump = jb;
+}
+
+static void pk_track(FILE *f)
+{
+  int k;
+  for (k = 0; k < PK_MAXFILES; ++k) {
+    if (pk_files[k] == NULL) {
+      pk_files[k] = f;
+      return;
+    }
+  }
+}
+
+int pk_fclose(FILE *f)
+{ /* fclose() for library code; calpgm.h maps fclose to this */
+  int k;
+  for (k = 0; k < PK_MAXFILES; ++k) {
+    if (pk_files[k] == f) pk_files[k] = NULL;
+  }
+  return fclose(f);
+}
+
+void pk_close_all(void)
+{ /* close files that fopenq() opened and nobody closed */
+  int k;
+  for (k = 0; k < PK_MAXFILES; ++k) {
+    if (pk_files[k] != NULL) {
+      fclose(pk_files[k]);
+      pk_files[k] = NULL;
+    }
+  }
+}
+
+void pk_fail(int code)
+{
+  if (code == 0) code = EXIT_FAILURE;
+  fflush(stdout);
+  if (pk_jump != NULL) longjmp(*pk_jump, code);
+  exit(code);
+}
+
 int chtime(str, N)
 char str[];
 const int N;
@@ -74,7 +131,7 @@ void *mallocq(size_t nl)
   p = malloc((size_t) nl);
   if (p == NULL) {
     puts("memory allocation error");
-    exit(EXIT_FAILURE);
+    pk_fail(EXIT_FAILURE);
   } 
   return p;
 }
@@ -210,9 +267,10 @@ FILE *fopenq(const char *fname, const char *opt)
     hret = fopen(fname,opt);
     if(hret == NULL) {
       printf(" Trouble opening %s\n", fname);
-      exit(EXIT_FAILURE);
+      pk_fail(EXIT_FAILURE);
     }
   }
+  if (hret != NULL) pk_track(hret);
   return hret;
 } /* fopenq */
 
@@ -249,7 +307,7 @@ int rqexit(ival)
 const int ival;
 {
   if (ival != 0) {
-    (void)signal(SIGINT, brkqr);
+    if (pk_libmode == 0) (void)signal(SIGINT, brkqr);
     brkflg = 0;
   }
   return brkflg;

@@ -308,7 +308,7 @@ int iflg, ipos;
     }
     if (dheapv == NULL) {
       puts(" scratch used before initialization");
-      exit(EXIT_FAILURE);
+      pk_fail(EXIT_FAILURE);
     }
     /* find offset from buffer origin */
     if (ipos < 0)
@@ -374,7 +374,7 @@ int iflg, ipos;
         if (scratch == NULL || fseek(scratch, (long) lpos, SEEK_SET) != 0
             || (int) fwrite(pheap, nbyte, (size_t) n, scratch) != n) {
           puts(" scratch file write error");
-          exit(EXIT_FAILURE);
+          pk_fail(EXIT_FAILURE);
         }
       }
     }
@@ -399,7 +399,7 @@ int iflg, ipos;
         if (scratch == NULL || fseek(scratch, (long) lpos, SEEK_SET) != 0
             || (int) fread(pheap, nbyte, (size_t) n, scratch) != n) {
           printf("scratch file read error at %d\n", ipos);
-          exit(EXIT_FAILURE);
+          pk_fail(EXIT_FAILURE);
         }
       }
     }

@@ -48,8 +48,25 @@ SBLK *sblk_alloc(const int nstruct, const unsigned mxdm);
 
 /********************************************************************/
 #define PR_DELAY 6   /* seconds delay between informational messages */
+static void ibufof_reset(void);
+static int calcat_body(int argc, char *argv[]);
 
-int main(int argc, char* argv[])
+/* Library entry point (pickett.h); the program's main() is in calcatm.c */
+int calcat_run(int argc, char *argv[])
+{
+  jmp_buf jb;
+  int rc;
+  rc = setjmp(jb);
+  if (rc == 0) {
+    pk_set_jump(&jb);
+    rc = calcat_body(argc, argv);
+  }
+  pk_set_jump(NULL);
+  pk_close_all();
+  return rc;
+}
+
+static int calcat_body(int argc, char *argv[])
 {
 #define NFILE 6
 /* This should be modified to extend the range */
@@ -149,7 +166,9 @@ int main(int argc, char* argv[])
    * TMAX value to 1 K */
   for (i = 0; i < NTEMP; i++) {
     temp[i] = (double)(TMAX - i);
+    qsum[i] = 0.; /* static: reset for repeated runs in one process */
   }
+  ibufof_reset();
   for (k = NTEMP - 2; k >= 0; --k) {
     if (fabs(tmq - temp[k]) < 0.01) {
       --ntemp;
@@ -170,7 +189,7 @@ int main(int argc, char* argv[])
     puts(" ERROR IN READING  FIRST CARDS OF .INT");
     fclose(luint);
     fclose(luout);
-    exit(EXIT_FAILURE);
+    pk_fail(EXIT_FAILURE);
   }
   if (qrot < 1)
     qrot = 1;
@@ -280,7 +299,7 @@ int main(int argc, char* argv[])
     npar = 0;
   if (npar <= 0) {
     puts("Error reading .VAR file");
-    exit(EXIT_FAILURE);
+    pk_fail(EXIT_FAILURE);
   }
   itmp = 10;
   iqnfmtv = (int *)mallocq((size_t) (nfmt << 1) * sizeof(int));
@@ -319,7 +338,7 @@ int main(int argc, char* argv[])
   ndel = (unsigned) (nfit + 1);
   if (nfit > nsize_p || nfit <= 0) {
     puts(" memory allocation error for var matrix");
-    exit(EXIT_FAILURE);
+    pk_fail(EXIT_FAILURE);
   }
   if ((nfit & 1) == 0) {
     nlsq = (size_t) ((unsigned) nfit >> 1) * sizeof(double);
@@ -780,7 +799,7 @@ int main(int argc, char* argv[])
   /* sort cat file */
   sortn(fname[ecat], fname[ecat], FALSE);
   return 0;
-}                               /* main */
+}                               /* calcat_body */
 
 int qnfmt(iqu, nqn, sqn)
 short *iqu;
@@ -863,17 +882,28 @@ double *s, *t, *u, *wk;
   return 0;
 }                               /* simt */
 
+/* ibufof state; file scope so ibufof_reset() can clear it between runs */
+static /*@null@*/ FILE *scratch;
+static long maxrec, lsizb;
+static int mempos, orgpos, nbsav;
+static unsigned int maxdm;
+
+static void ibufof_reset(void)
+{
+  if (scratch != NULL) {
+    fclose(scratch);
+    scratch = NULL;
+  }
+  maxrec = lsizb = 0;
+  mempos = orgpos = nbsav = 0;
+  maxdm = 0;
+}
+
 SBLK *ibufof(ipos, ndel, blk)
 const int ipos;
 const unsigned int ndel;
 SBLK *blk;
 {
-  /* Initialized data */
-  static FILE *scratch;
-  static long maxrec, lsizb;
-  static int mempos, orgpos, nbsav;
-  static unsigned int maxdm;
-
   /* Local variables */
   /*@dependent@*/ SBLK *pmblk, *pdblk;
   /*@dependent@*/ double *pvec;
@@ -897,7 +927,7 @@ SBLK *blk;
       scratch = tmpfile();
       if (scratch == NULL) {
         puts("scratch file open error");
-        exit(EXIT_FAILURE);
+        pk_fail(EXIT_FAILURE);
       }
       nbsav = mempos;
       maxdm = pmblk->nsizblk;
@@ -945,7 +975,7 @@ SBLK *blk;
     }
     if (lret != len) {
       puts("heap write error ");
-      exit(EXIT_FAILURE);
+      pk_fail(EXIT_FAILURE);
     }
     pdblk->nsizblk = pmblk->nsizblk;
     pdblk->ixblk = pmblk->ixblk;
@@ -973,7 +1003,7 @@ SBLK *blk;
     }
     if (lret != len) {
       puts("heap read error ");
-      exit(EXIT_FAILURE);
+      pk_fail(EXIT_FAILURE);
     }
     pmblk->nsizblk = pdblk->nsizblk;
     pmblk->ixblk = pdblk->ixblk;

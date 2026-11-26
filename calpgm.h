@@ -6,7 +6,9 @@
 /*   Revised version in c, 22 March 1999 */
 #include <stdio.h>
 #ifndef BOOL
-typedef int bool;
+#if !defined(__STDC_VERSION__) || __STDC_VERSION__ < 202311L
+typedef int bool; /* C23 makes bool a keyword */
+#endif
 #define BOOL bool
 #endif
 #ifndef TRUE
@@ -62,6 +64,8 @@ typedef unsigned char bcd_t;
 #include "cnjj.h"
 /************** SLIB interface ***************************************** */
 #include "slib.h"
+/* files are closed through pk_fclose so a failed run can close the rest */
+#define fclose(f) pk_fclose(f)
 /************** ULIB interface ******************************************/
 int ordblk(const int ndm, const int nn, short *iqnsep, double *t, double *e,
             short *isblk, double *p, short *ip);
