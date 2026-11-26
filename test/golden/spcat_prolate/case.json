@@ -1,0 +1,5 @@
+{
+  "description": "SPCAT, CH3CN ground-state prolate symmetric top (the original test/prolate case). Expected files are the 2020 reference outputs from test/, not regenerated.",
+  "steps": [{"program": "spcat", "args": ["prolate"]}],
+  "outputs": ["prolate.cat", "prolate.egy", "prolate.out"]
+}

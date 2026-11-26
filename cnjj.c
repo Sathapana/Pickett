@@ -1,5 +1,6 @@
 #include <math.h>
 #include "cnjj.h"
+#include "pktls.h"
 
 /*   Copyright (C) 1989, California Institute of Technology */
 /*   All rights reserved.  U. S. Government Sponsorship under */
@@ -9,7 +10,7 @@
 /*   Revised version in c, 22 March 1999 */
 
 #define NFAC 1024
-static double fac[NFAC];
+static PK_TLS double fac[NFAC];
 
 int cjjini()
 { /**** set up log factorials ****/

@@ -46,6 +46,7 @@
 #include <ctype.h>
 #include "calpgm.h"
 #include "spinit.h"
+#include "pktls.h"
 #define ODD(i)  (((int)(i) & 1) != 0)
 #define EVEN(i) (((int)(i) & 1) == 0)
 #define ODD2(i) (((int)(i) & 2) != 0)
@@ -92,8 +93,8 @@ typedef struct {  /* vibrational information */
   int nspstat;
   short knmin[4], knmax, wt[5], ewt[2], lvqn, lvupper, gsym, nqn;
 } SVIB;
-static SVIB vinfo1;
-/*@owned@*/ static SVIB *vinfo = &vinfo1;
+static PK_TLS SVIB vinfo1;
+/*@owned@*/ static PK_TLS SVIB *vinfo = NULL; /* set by setopt() before any use */
 
 typedef struct str_spar {  /* local parameter information */
   /*@null@*/ /*@owned@*/ struct str_spar *next;
@@ -106,7 +107,7 @@ typedef struct str_spar {  /* local parameter information */
 } SPAR;
 typedef /*@null@*/ /*@owned@*/ SPAR *PSPAR;
 
-static PSPAR spar_head[MAXVIB];
+static PK_TLS PSPAR spar_head[MAXVIB];
 
 static short sptzero[] = { 1, 0 };      /* default for no spins */
 
@@ -115,9 +116,9 @@ typedef struct struct_ssp {
   /*@notnull@*//*@owned@*/ short *sspt;
   int ssize, nitot;
 } SSP;
-static SSP ssp_head = { NULL, sptzero, 1 , 0};
+static PK_TLS SSP ssp_head = { NULL, sptzero, 1 , 0};
 
-static struct {   /* save data for getqn */
+static PK_TLS struct {   /* save data for getqn */
   int cblk, cnblk, csblk, cff, cwt[5];
 } *cgetq, cgetv[2];
 
@@ -126,45 +127,46 @@ typedef struct { /* local dipole information */
   short  flg;
   signed char kd, ld, ldel, fc, kavg;
 } SDIP;
-static SDIP dipinfo0;
-/*@owned@*/ static SDIP *dipinfo = &dipinfo0;
+static PK_TLS SDIP dipinfo0;
+/*@owned@*/ static PK_TLS SDIP *dipinfo = NULL; /* set by setint() before any use */
 
-static double zero = 0.;
-static double zwk = 0.;
-static double spfac[MAXII];
-static double spfac2[MAXII];
-static int zmoldv = 0;
-static int zblkptr = 0;
-static int zivs = 0;
-static int zipder = 0;
+static PK_TLS double zero = 0.;
+static PK_TLS double zwk = 0.;
+static PK_TLS double spfac[MAXII];
+static PK_TLS double spfac2[MAXII];
+static PK_TLS int zmoldv = 0;
+static PK_TLS int zblkptr = 0;
+static PK_TLS int zivs = 0;
+static PK_TLS int zipder = 0;
 static int revsym[] = { 0, 3, 2, 1};
 static int isoddk[] = { 0, 1, 1, 0};
-static int ixphase[] = {0, 1, 2, 3};
+static PK_TLS int ixphase[] = {0, 1, 2, 3};
+static const int ixphase0[] = {0, 1, 2, 3}; /* reset by setopt() */
 static int ipwr2[]={0,1,2,4};
-static int is_esym[MAXITOT];
-static int lscom[MAXNS], iscom[MAXNS], jscom[MAXNS], ismap[MAXNS];
-static int ixcom[NDXCOM], jxcom[NDXCOM];
-static int itptr, itsym, nspin, nsqmax, ndmx, ndmax, nddip;
-static short szero = 0;
-static short zidx = 0;
-static short zjdx = 0;
-static short ziqnsep = 0;
-static short zibkptr = 0;
-static short zikmin = 0;
-static struct {
+static PK_TLS int is_esym[MAXITOT];
+static PK_TLS int lscom[MAXNS], iscom[MAXNS], jscom[MAXNS], ismap[MAXNS];
+static PK_TLS int ixcom[NDXCOM], jxcom[NDXCOM];
+static PK_TLS int itptr, itsym, nspin, nsqmax, ndmx, ndmax, nddip;
+static PK_TLS short szero = 0;
+static PK_TLS short zidx = 0;
+static PK_TLS short zjdx = 0;
+static PK_TLS short ziqnsep = 0;
+static PK_TLS short zibkptr = 0;
+static PK_TLS short zikmin = 0;
+static PK_TLS struct {
   int mxspin, idiag, nvib, nfit, nbkpj, ixz, nqnn, nqn, maxqn, vibfac;
   int parinit, maxblk, nitot, vibdec, esymdec, msmask, nqn0, iqfmt0, maxwt;
   int stdphase, phasemask, g12;
   unsigned int msshft;
   BOOL lsym, esym, oblate, vibfmt, newlz, nofc;
 } glob;
-static char sbcd[NSBCD];
+static PK_TLS char sbcd[NSBCD];
 /* pointers to dynamically allocated arrays */
-/*@owned@*/ static int *moldv;
-/*@owned@*/ static int *blkptr;
-/*@owned@*/ static int *ipder, *ivs;
-/*@owned@*/ static double *wk;
-/*@owned@*/ static short *idx, *jdx, *iqnsep, *ibkptr, *ikmin;
+/*@owned@*/ static PK_TLS int *moldv;
+/*@owned@*/ static PK_TLS int *blkptr;
+/*@owned@*/ static PK_TLS int *ipder, *ivs;
+/*@owned@*/ static PK_TLS double *wk;
+/*@owned@*/ static PK_TLS short *idx, *jdx, *iqnsep, *ibkptr, *ikmin;
 
 int dclr(const int n1, const int n2, double *vec, const int ix);
 int specop(const int neuler, BOOL * newblk, int *nsqj, int *ikq,
@@ -257,8 +259,8 @@ double *egy, *t, *dedp, *pmix;
   /*         T = eigenvector matrix */
   /*         DEDP = derivative of energy with respect to parameter */
 
-  static double sqj[10];
-  static int nold = -1;
+  static PK_TLS double sqj[10];
+  static PK_TLS int nold = -1;
   SPAR *spar_now;
   short *itau, *vbkptr;
   double *pt, *dbar, pbar, sqnn, zpar, dn, ele, egy0;
@@ -277,7 +279,7 @@ double *egy, *t, *dedp, *pmix;
 
   if (ndmx <= 0) {
     puts("working vectors not allocated");
-    exit(EXIT_FAILURE);
+    pk_fail(EXIT_FAILURE);
   }
   dbar = &wk[ndmx];
   ndm = nsize;
@@ -419,7 +421,7 @@ double *egy, *t, *dedp, *pmix;
                 if (ncos == 0) continue;     /* get next parameter */
                 printf("DIRCOS WORKING VECTOR TOO SHORT IN HAMX BY %d\n",
                        ncos);
-                exit(EXIT_FAILURE);
+                pk_fail(EXIT_FAILURE);
               }
               if (TEST(idflags, MNOUNIT)) 
                 isunit = 0;
@@ -558,7 +560,7 @@ double *egy, *t, *dedp, *pmix;
         if (nqnsep < 0) {
           printf(" diagonalization failure, err = %d in block %d, %d\n",
                  nqnsep, iblk, nsize);
-          exit(EXIT_FAILURE);
+          pk_fail(EXIT_FAILURE);
         }
       	switch (glob.idiag) {
       	default:  /*  energy sort of subblock */
@@ -690,7 +692,7 @@ const short *ix, *jx;
   /*     on return: */
   /*         WK= modified vector */
 #define NSPOP 5
-  static double aden[NSPOP], bden[NSPOP];
+  static PK_TLS double aden[NSPOP], bden[NSPOP];
   double akisq, akjsq, anisq, anjsq, da, dd, di, dj, xi, xj;
   double sqi, sqj, di0, dj0;
   int i, nkq, nkq0, nnq, nnq0, ki, kj, ist;
@@ -812,8 +814,8 @@ const short *ix, *jx;
   /*         IX,JX= relative indices of elements in WK */
   /*     on return: */
   /*         WK= modified vector */
-  static double pfac[MAXVIB];
-  static short ipfac[MAXVIB];
+  static PK_TLS double pfac[MAXVIB];
+  static PK_TLS short ipfac[MAXVIB];
   double di, dj, ang;
   int i, n, ki, kj, kd, isg12, kmin;
 
@@ -2083,7 +2085,7 @@ double *s;
   /*     on return: */
   /*         S= transition dipole matrix in original basis */
   /*         INTENS returns true is S is not 0 */
-  static int idipoff;
+  static PK_TLS int idipoff;
   SDIP *pdip;
   double dd;
   long ndms;
@@ -2096,7 +2098,7 @@ double *s;
 
   if (ndmx <= 0) {
     puts("working vectors not allocated");
-    exit(EXIT_FAILURE);
+    pk_fail(EXIT_FAILURE);
   }
   dipoff = idipoff;
   if (dipoff >= nddip) 
@@ -2181,7 +2183,7 @@ double *s;
           if (ncos == 0) continue;
           if (ncos < 0) {
             puts("DIRCOS WORKING VECTOR TOO SHORT IN INTENS");
-            exit(EXIT_FAILURE);
+            pk_fail(EXIT_FAILURE);
           }
           dd = dip[i] * pdip->fac;
           /* correct for special cases */
@@ -2275,6 +2277,7 @@ char *namfil;
   cgetv[0].cblk = cgetv[1].cblk = 0;    /* reset store for getqn */
   cjjini();
   glob.lsym = TRUE; glob.esym = TRUE; glob.esymdec = 100; glob.maxwt = 0;
+  memcpy(ixphase, ixphase0, sizeof(ixphase)); /* setint() updates it */
   glob.stdphase = 0; glob.newlz = FALSE; glob.nofc = FALSE; glob.g12 = 0; 
   rvec0[0] = 1; 
   rvec0[1] = 0;
@@ -2549,7 +2552,7 @@ char *namfil;
   }
   if (k != 0) {
     puts("L DOUBLETS SHOULD BE IN PAIRS");
-    exit(EXIT_FAILURE);
+    pk_fail(EXIT_FAILURE);
   }
   k = 0;
   pvinfo = vinfo;
@@ -2684,7 +2687,7 @@ const double *par;
   /*     on return: */
   /*         NBKPF= blocks per F */
   /*         NEGY= possibly downsized NEGY to account for local storage */
-  static char csym[] = { 'x', 'c', 'b', 'a' };
+  char csym[] = { 'x', 'c', 'b', 'a' }; /* local: swapped for oblate rotors */
   SVIB *pvinfo;
   SPAR *spar_now;
   short *jjs;
@@ -3086,8 +3089,8 @@ const double *par;
                         "(8) problem with Itot symmetry\n",
                         "(9) matrix element couples states with differernt weights\n"};
                         
-  static int idmy[NDXCOM], initl;
-  static bcd_t idunit[NDECPAR];
+  static PK_TLS int idmy[NDXCOM], initl;
+  static PK_TLS bcd_t idunit[NDECPAR];
   SVIB *pvib1, *pvib2;
   SPAR *spar_now, *spar_last, *spar_match, *spar_free;
   short *iiv1, *iiv2;
@@ -3950,8 +3953,8 @@ int *iwt, *jwt;
 
 int setgsym(const int gsym)
 {
-  static int oldgsym = -1;
-  static int nsym;
+  static PK_TLS int oldgsym = -1;
+  static PK_TLS int nsym;
   int k, kk;
   if (gsym == oldgsym) return nsym;
   oldgsym = gsym;
@@ -4040,7 +4043,7 @@ SVIB *pvinfo;
   i = (int)(nsstat << glob.msshft);
   if (i < 0 || (size_t)(i >> glob.msshft) != nl) {
     puts("spin problem too big");
-    exit(EXIT_FAILURE);
+    pk_fail(EXIT_FAILURE);
   }
   nitot = 0; iret = nspinv; i = pvinfo->gsym;
   if (ODD(i)) { 
@@ -4153,7 +4156,7 @@ void setsp(void)
       }
       if (i < nspin) {
         puts("spins under Itot should be the same");
-        exit(EXIT_FAILURE);
+        pk_fail(EXIT_FAILURE);
       }
       pitmix0 = get_itmix(ii, nitot);
       if (nitot < 3)
@@ -4316,7 +4319,7 @@ int *idgn;
   /*         IQN= list of quantum numbers */
   /*         IDGN= degeneracy */
   /*         NCOD= seraching aid to find state within a Wang block */
-  static int last;
+  static PK_TLS int last;
   int ibgn, iend, iqsp, isym, i, k, nsblk, ioff, lower, iv, iqf;
   int n, ncod, ldgn, ix, kq, ivbase, lv;
   short mgsym, ngsym;
@@ -4495,7 +4498,7 @@ int *isunit;
   /*     BEST RESULTS ON SPEED IF N FOR BRA CHANGES SLOWEST */
   /***********************************************************************/
 #define NFAC_DIRCOS 20
-  static double ff[MAXN_DIRCOS], fac[NFAC_DIRCOS];
+  static PK_TLS double ff[MAXN_DIRCOS], fac[NFAC_DIRCOS];
   double ele, elex, eletmp;
   int kdel, kbra, kbgn, nbgn, kket, isgn, ncase0;
   int ncase, isum, kbra0, kdel2, kket0, kket2, i, k;
@@ -4801,9 +4804,9 @@ int ffcal(nff, kff, ff)
 const int nff, kff;
 double *ff;
 {
-  static int nlast = -1;
-  static int klast = 0;
-  static double sq;
+  static PK_TLS int nlast = -1;
+  static PK_TLS int klast = 0;
+  static PK_TLS double sq;
   int k;
 
   if (nff != nlast) {

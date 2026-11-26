@@ -1,0 +1,6 @@
+{
+  "description": "SPCAT, SO2-like asymmetric top (Watson A), b-type dipole, spin weights 1/0, N <= 20, writes .cat .egy .str .out.",
+  "steps": [{"program": "spcat", "args": ["asym"]}],
+  "outputs": ["asym.cat", "asym.egy", "asym.out", "asym.str"],
+  "compare": {"asym.str": "numeric-abs"}
+}

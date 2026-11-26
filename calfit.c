@@ -29,6 +29,7 @@
 #include <stdlib.h>
 #include "calpgm.h"
 #include "lsqfit.h"
+#include "pktls.h"
 #define NDCARD 130
 #define PR_DELAY 6    /* seconds delay between informational messages */
 /************** CALFIT interfaces ***********************************/
@@ -38,9 +39,28 @@ int parer(double par, double errx, double dif,
 int linein(FILE * luin, int *nline, int iqnfmt);
 int lineix(FILE * lu, int flg, int nline, int nblkpf, int iqnfmt);
 /********************************************************************/
-static char card[NDCARD];
+static PK_TLS char card[NDCARD];
+static int calfit_body(int argc, char *argv[]);
 
-int main(int argc, char *argv[])
+/* Library entry point (pickett.h); the program's main() is in calfitm.c */
+int calfit_run(int argc, char *argv[])
+{
+  jmp_buf jb;
+  unsigned int fpu;
+  int rc;
+  fpu = pk_fpu_enter(); /* same precision on every thread */
+  rc = setjmp(jb);
+  if (rc == 0) {
+    pk_set_jump(&jb);
+    rc = calfit_body(argc, argv);
+  }
+  pk_set_jump(NULL);
+  pk_close_all();
+  pk_fpu_leave(fpu);
+  return rc;
+}
+
+static int calfit_body(int argc, char *argv[])
 {
 #define NFILE 5
 #define LBLEN 10
@@ -58,6 +78,7 @@ int main(int argc, char *argv[])
   /*@owned@*/ double *fitbgn, *var, *oldfit, *fit, *teig, *pmix;
   /*@owned@*/ int *iperm;
   /*@owned@*/ char *parlbl;
+  const PK_SINK *sink; /* result callbacks (pickett.h), or NULL */
   FILE *lupar, *lulin, *lufit, *lubak, *luvar;
   double *egy, *egyder;
   double *pvar, *pfit, *pfitb, *pfitd;
@@ -86,6 +107,7 @@ int main(int argc, char *argv[])
 
   /*     open read and write files */
 
+  sink = pk_get_sink();
   filget(argc, argv, NFILE, fname, ext);
   filbak(fname[epar], fname[ebak]);
   lubak = fopenq(fname[ebak], "r");
@@ -95,7 +117,7 @@ int main(int argc, char *argv[])
 
   if (fgetstr(card, NDCARD, lubak) <= 0) {
     puts(" Unable to read title of .par file");
-    exit(EXIT_FAILURE);
+    pk_fail(EXIT_FAILURE);
   }
   chtime(card, 82);
   fputs(card, lufit);
@@ -114,7 +136,7 @@ int main(int argc, char *argv[])
     n = pcard(card, dvec, 8, NULL);
   if (n == 0) {
     puts(" Unable to read second line of .par file");
-    exit(EXIT_FAILURE);
+    pk_fail(EXIT_FAILURE);
   }
   npar = (int) dvec[0];
   if (dvec[1] < 0.) {
@@ -141,14 +163,14 @@ int main(int argc, char *argv[])
   }
   if ((long) nline != (long) nl) {
     puts(" number of lines too big for this computer ");
-    exit(EXIT_FAILURE);
+    pk_fail(EXIT_FAILURE);
   }
   /*  read in option card(s) */
   iqnfmt = 0; nfmt = catqn;
   noptn = setopt(lubak, &nfmt, &itd, &ndbcd, namfil);
   if (noptn <= 0) {
     puts("Error reading option lines");
-    exit(EXIT_FAILURE);
+    pk_fail(EXIT_FAILURE);
   }
   nqn = setfmt(&iqnfmt, 1);
   if (nqn > MAXCAT) catqn = nqn;
@@ -179,7 +201,7 @@ int main(int argc, char *argv[])
   if (ndfit > nsize_p) {
     printf("number of independent parameters is too big: %d %d\n",
            nfit, nsize_p - 1);
-    exit(EXIT_FAILURE);
+    pk_fail(EXIT_FAILURE);
   }
   nl = (size_t) nfit * sizeof(int);
   iperm = (int *) mallocq(nl);
@@ -306,7 +328,7 @@ int main(int argc, char *argv[])
   fflush(stdout);
   if (nline <= 0) {
     puts("no lines read");
-    exit(EXIT_FAILURE);
+    pk_fail(EXIT_FAILURE);
   }  
   /* initialize block structure */
   nblkpf = maxf;
@@ -322,7 +344,7 @@ int main(int argc, char *argv[])
   /* allocate memory for energy, derivatives, and eigenvector */
   if (maxdm > nsize_p) {
     printf(" Hamiltonian dinension is too big: %d %d\n", maxdm, nsize_p);
-    exit(EXIT_FAILURE);
+    pk_fail(EXIT_FAILURE);
   }
   nlsq = (size_t) maxdm;
   nl = nlsq * sizeof(double);
@@ -365,7 +387,7 @@ int main(int argc, char *argv[])
           printf
               ("WARNING .. SIZE OF BLOCK %d2 IS %d AND EXCEEDS DIMENSIONS\n",
                iblk, nsize);
-          exit(EXIT_FAILURE);
+          pk_fail(EXIT_FAILURE);
         }
         k = (iblk - 1) / nblkpf;
         if (lstf != k && caldelay(PR_DELAY) != 0) {
@@ -652,6 +674,9 @@ int main(int argc, char *argv[])
                   itr, xsqt, xsqbest);
     fprintf(lufit," END OF ITERATION %2d OLD, NEW RMS ERROR=%15.5f %15.5f\n",
                   itr, xsqt, xsqbest);
+    if (sink != NULL && sink->fit_iteration != NULL)
+      sink->fit_iteration(sink->user, itr, xsqt, xsqbest, xsqmw, xsqir,
+                          avgmw, avgir, nf, nrj);
     fflush(stdout);
   } while (itr < nitr && 0.999999 * xsqt > xsqbest);
 
@@ -663,7 +688,7 @@ int main(int argc, char *argv[])
   setblk(lufit, 0, idpar, par, &nblkpf, &maxdm);        /* release storage */
   if (itr == 0) {
     puts(" output files not updated");
-    exit(0);
+    return 0; /* calfit_run closes the open files */
   }
   rewind(lubak);
   fgetstr(card, NDCARD, lubak);
@@ -718,6 +743,12 @@ int main(int argc, char *argv[])
     putbcd(pare, 64, &idpar[ibcd]);
     fprintf(lupar, "%s %23.15E %14.8E %s\n", pare, par[i], erp[i], card);
     fprintf(luvar, "%s %23.15E %14.8E %s\n", pare, par[i], erpar[i], card);
+    if (sink != NULL && sink->fit_param != NULL) {
+      const char *pid = pare; /* k is in use: it is the fgetstr status */
+      while (*pid == ' ') ++pid;
+      sink->fit_param(sink->user, i, pid, par[i], erpar[i], erp[i],
+                      (card[0] == '/') ? &card[1] : "");
+    }
     tlbl += LBLEN;
   }
   while (k > 0) {               /* copy correlation lines or extra parameter lines */
@@ -749,7 +780,7 @@ int main(int argc, char *argv[])
   free(par);
   free(parlbl);
   return 0;
-}                               /* MAIN */
+}                               /* calfit_body */
 
 int qnfmt2(int nqn, short *qnum, char *aqnum)
 {

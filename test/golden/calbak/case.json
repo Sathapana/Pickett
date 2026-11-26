@@ -1,0 +1,5 @@
+{
+  "description": "calbak: merged-catalog lines (negative TAG) from the spcat_asym catalog converted to a .lin file.",
+  "steps": [{"program": "calbak", "args": ["asym.mrg", "asym.lin"]}],
+  "outputs": ["asym.lin"]
+}

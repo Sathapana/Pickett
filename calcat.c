@@ -29,6 +29,7 @@
 #include <string.h>
 #include <math.h>
 #include "calpgm.h"
+#include "pktls.h"
 #define MAXQNX  13
 typedef struct {
   /*@owned@*/ /*@null@*/ double *eigblk;
@@ -48,8 +49,128 @@ SBLK *sblk_alloc(const int nstruct, const unsigned mxdm);
 
 /********************************************************************/
 #define PR_DELAY 6   /* seconds delay between informational messages */
+static void ibufof_reset(void);
+static int calcat_body(int argc, char *argv[]);
 
-int main(int argc, char* argv[])
+/****** partition function: recorded in the level loop, summed at the end ******/
+/* The level loop used to update all NTEMP sums for every level. Now it      */
+/* records one event per level (and per shift of the energy zero), and       */
+/* pf_compute() replays the events for each temperature. Each temperature    */
+/* gets the same operations in the same order as before, so the sums are     */
+/* unchanged, and different temperatures can be summed on different threads. */
+typedef struct {
+  double te;      /* exponent factor: Boltzmann factor is exp(te / T) */
+  double dgn;     /* degeneracy (level) */
+  int rescale;    /* 1: the energy zero moved, multiply the sums so far */
+} PFEV;
+static PK_TLS PFEV *pfev = NULL;
+static PK_TLS long npfev = 0, maxpfev = 0;
+
+static void pf_reset(void)
+{
+  free(pfev);
+  pfev = NULL;
+  npfev = maxpfev = 0;
+}
+
+static void pf_add(double te, double dgn, int rescale)
+{
+  PFEV *p;
+  long n;
+  if (npfev == maxpfev) {
+    n = (maxpfev != 0) ? 2 * maxpfev : 4096;
+    p = (PFEV *) realloc(pfev, (size_t) n * sizeof(PFEV));
+    if (p == NULL) {
+      puts("memory allocation error");
+      pk_fail(EXIT_FAILURE);
+    }
+    pfev = p;
+    maxpfev = n;
+  }
+  pfev[npfev].te = te;
+  pfev[npfev].dgn = dgn;
+  pfev[npfev].rescale = rescale;
+  ++npfev;
+}
+
+typedef struct {
+  const PFEV *ev;
+  long nev;
+  const double *temp;
+  double *qsum;
+  int ntemp;
+  double telim;
+} PFJOB;
+
+static void pf_part(void *ctx, int part, int nparts)
+{ /* sums for temperatures part, part + nparts, ...: the original loop, with */
+  /* levels outside and (decreasing) temperatures inside, on this subset    */
+  const PFJOB *job = (const PFJOB *) ctx;
+  const PFEV *ev;
+  const double *temp = job->temp;
+  double *qsum = job->qsum;
+  double te, dgn, tmp, telim = job->telim;
+  long i;
+  int k, ntemp = job->ntemp;
+  for (k = part; k < ntemp; k += nparts)
+    qsum[k] = 0.;
+  for (i = 0, ev = job->ev; i < job->nev; ++i, ++ev) {
+    te = ev->te;
+    if (ev->rescale != 0) {            /* adjust energy zero */
+      for (k = part; k < ntemp; k += nparts) {
+        tmp = te / temp[k];
+        if (tmp < telim)
+          tmp = telim;
+        qsum[k] *= exp(tmp);
+      }
+    } else {                           /* accumulate */
+      dgn = ev->dgn;
+      for (k = part; k < ntemp; k += nparts) {
+        tmp = te / temp[k];
+        if (tmp < telim)
+          break;                       /* smaller still at lower T */
+        qsum[k] += dgn * exp(tmp);
+      }
+    }
+  }
+}
+
+static void pf_compute(const double *temp, double *qsum, int ntemp, double telim)
+{
+  PFJOB job;
+  int n;
+  job.ev = pfev; job.nev = npfev; job.temp = temp; job.qsum = qsum;
+  job.ntemp = ntemp; job.telim = telim;
+  n = pk_get_threads();
+  if ((double) npfev * (double) ntemp < 2.0e6)
+    n = 1;   /* small job (measured): starting threads would cost more */
+  if (n > ntemp)
+    n = ntemp;
+  if (n > 1)
+    pk_run_parallel(pf_part, &job, n);
+  else
+    pf_part(&job, 0, 1);
+}
+
+/* Library entry point (pickett.h); the program's main() is in calcatm.c */
+int calcat_run(int argc, char *argv[])
+{
+  jmp_buf jb;
+  unsigned int fpu;
+  int rc;
+  fpu = pk_fpu_enter(); /* same precision on every thread */
+  rc = setjmp(jb);
+  if (rc == 0) {
+    pk_set_jump(&jb);
+    rc = calcat_body(argc, argv);
+  }
+  pk_set_jump(NULL);
+  pk_close_all();
+  pk_fpu_leave(fpu);
+  return rc;
+}
+
+static int calcat_body(int argc, char *argv[])
 {
 #define NFILE 6
 /* This should be modified to extend the range */
@@ -58,11 +179,11 @@ int main(int argc, char* argv[])
 #define NCARD 130
 #define NDVEC 10
  /* Initialized data */
-  static double temp[NTEMP], qsum[NTEMP];
+  static PK_TLS double temp[NTEMP], qsum[NTEMP];
   static const char *ext[NFILE] =
     { "int", "var", "out", "cat", "str", "egy" };
   enum efile {eint, evar, eout, ecat, estr, eegy};
-  static char sqn[4*MAXQN + 2];
+  static PK_TLS char sqn[4*MAXQN + 2];
   static char warn[] = " WARNING: THERE WAS NO DIAGONALIZATION\n";
   static char headq[] = "TEMPERATURE - Q(SPIN-ROT.) - log Q(SPIN-ROT.)\n";
   /* Local variables */
@@ -88,6 +209,7 @@ int main(int argc, char* argv[])
   int nsav, jxdp, itmp, jnxt, i, j, k, inblk, nbkpj, npdip, ntemp, ij, jj, jx;
   int iqnfmt, idf, itd, nqn, npar, isiz, jsiz, nsize_p, maxqn, ktsp, ibcd, ndbcd;
   int jmax, nfmt, iposv, iv, newfmt, globfmt, isneg, catqn, maxv;
+  const PK_SINK *sink; /* result callbacks (pickett.h), or NULL */
   BOOL prir, prder, prfrq, preig, pregy, prstr, diag, first, ifdump;
   unsigned int ndel, maxdm;
   short iqni[MAXQN + MAXQNX];
@@ -149,7 +271,11 @@ int main(int argc, char* argv[])
    * TMAX value to 1 K */
   for (i = 0; i < NTEMP; i++) {
     temp[i] = (double)(TMAX - i);
+    qsum[i] = 0.; /* static: reset for repeated runs in one process */
   }
+  ibufof_reset();
+  pf_reset();
+  sink = pk_get_sink();
   for (k = NTEMP - 2; k >= 0; --k) {
     if (fabs(tmq - temp[k]) < 0.01) {
       --ntemp;
@@ -170,7 +296,7 @@ int main(int argc, char* argv[])
     puts(" ERROR IN READING  FIRST CARDS OF .INT");
     fclose(luint);
     fclose(luout);
-    exit(EXIT_FAILURE);
+    pk_fail(EXIT_FAILURE);
   }
   if (qrot < 1)
     qrot = 1;
@@ -280,7 +406,7 @@ int main(int argc, char* argv[])
     npar = 0;
   if (npar <= 0) {
     puts("Error reading .VAR file");
-    exit(EXIT_FAILURE);
+    pk_fail(EXIT_FAILURE);
   }
   itmp = 10;
   iqnfmtv = (int *)mallocq((size_t) (nfmt << 1) * sizeof(int));
@@ -319,7 +445,7 @@ int main(int argc, char* argv[])
   ndel = (unsigned) (nfit + 1);
   if (nfit > nsize_p || nfit <= 0) {
     puts(" memory allocation error for var matrix");
-    exit(EXIT_FAILURE);
+    pk_fail(EXIT_FAILURE);
   }
   if ((nfit & 1) == 0) {
     nlsq = (size_t) ((unsigned) nfit >> 1) * sizeof(double);
@@ -506,22 +632,15 @@ int main(int argc, char* argv[])
       if (egymin > egx) {     /*  adjust energy zero */
         te = tmc * (egymin - egx);
         egymin = egx;
-        for (k = 0; k < ntemp; ++k) {
-          tmp = te / temp[k];
-          if (tmp < telim)
-            tmp = telim;
-          qsum[k] *= exp(tmp);
-        }
+        pf_add(te, 0., 1);    /* summed in pf_compute() */
       }
-      /*  accumulate partition function values */
+      /*  accumulate partition function values (in pf_compute()) */
       te = tmc * (egx - egymin);
       dgn = (double) idgn;
-      for (k = 0; k < ntemp; ++k) {
-        tmp = te / temp[k];
-        if (tmp < telim)
-          break;
-        qsum[k] += dgn * exp(tmp);
-      }
+      pf_add(te, dgn, 0);
+      if (sink != NULL && sink->level != NULL)
+        sink->level(sink->user, iblk, i + 1, egx, err, pmix[i], idgn,
+                    (globfmt != 0) ? ktsp : -1, maxqn, iqni);
       if (prfrq) {
         fprintf(luout, "%6d %4d %17.6f %17.6f %10.6f",
                 iblk, i + 1, egx, err, pmix[i]);
@@ -702,6 +821,11 @@ int main(int argc, char* argv[])
                     elow, igup, itag, iqnfmt, sqn);
           }
           ++nline;
+          if (sink != NULL && sink->cat_line != NULL)
+            sink->cat_line(sink->user, frq, err, strlg, strr, itd, elow,
+                           igup, itag, iqnfmt, nqn,
+                           (isneg != 0) ? &iqni[MAXQN] : iqni,
+                           (isneg != 0) ? iqni : &iqni[MAXQN]);
           gupfmt(igup, sgup); sgup[3] = '\0';
           if (prir) {
             fprintf(lucat, "%13.6f%8.6f%8.4f%2d%10.4f%s%7ld%4d",
@@ -733,6 +857,8 @@ int main(int argc, char* argv[])
           qrot, egymin);
   printf(" NUMBER OF LINES = %6ld\n", nline);
   fprintf(luout," NUMBER OF LINES = %6ld\n", nline);
+  pf_compute(temp, qsum, ntemp, telim);
+  pf_reset();
   fputs(headq, stdout);
   fputs(headq, luout);
   for (i = 0; i < ntemp; ++i) {
@@ -741,6 +867,8 @@ int main(int argc, char* argv[])
       qlog = log10(qsum[i]);
     printf(       " %10.3f %14.4f %9.4f\n", temp[i], qsum[i], qlog);
     fprintf(luout," %10.3f %14.4f %9.4f\n", temp[i], qsum[i], qlog);
+    if (sink != NULL && sink->partition != NULL)
+      sink->partition(sink->user, temp[i], qsum[i]);
   }
   if (pregy)
     fclose(luegy);
@@ -780,7 +908,7 @@ int main(int argc, char* argv[])
   /* sort cat file */
   sortn(fname[ecat], fname[ecat], FALSE);
   return 0;
-}                               /* main */
+}                               /* calcat_body */
 
 int qnfmt(iqu, nqn, sqn)
 short *iqu;
@@ -863,17 +991,28 @@ double *s, *t, *u, *wk;
   return 0;
 }                               /* simt */
 
+/* ibufof state; file scope so ibufof_reset() can clear it between runs */
+static PK_TLS /*@null@*/ FILE *scratch;
+static PK_TLS long maxrec, lsizb;
+static PK_TLS int mempos, orgpos, nbsav;
+static PK_TLS unsigned int maxdm;
+
+static void ibufof_reset(void)
+{
+  if (scratch != NULL) {
+    fclose(scratch);
+    scratch = NULL;
+  }
+  maxrec = lsizb = 0;
+  mempos = orgpos = nbsav = 0;
+  maxdm = 0;
+}
+
 SBLK *ibufof(ipos, ndel, blk)
 const int ipos;
 const unsigned int ndel;
 SBLK *blk;
 {
-  /* Initialized data */
-  static FILE *scratch;
-  static long maxrec, lsizb;
-  static int mempos, orgpos, nbsav;
-  static unsigned int maxdm;
-
   /* Local variables */
   /*@dependent@*/ SBLK *pmblk, *pdblk;
   /*@dependent@*/ double *pvec;
@@ -897,7 +1036,7 @@ SBLK *blk;
       scratch = tmpfile();
       if (scratch == NULL) {
         puts("scratch file open error");
-        exit(EXIT_FAILURE);
+        pk_fail(EXIT_FAILURE);
       }
       nbsav = mempos;
       maxdm = pmblk->nsizblk;
@@ -945,7 +1084,7 @@ SBLK *blk;
     }
     if (lret != len) {
       puts("heap write error ");
-      exit(EXIT_FAILURE);
+      pk_fail(EXIT_FAILURE);
     }
     pdblk->nsizblk = pmblk->nsizblk;
     pdblk->ixblk = pmblk->ixblk;
@@ -973,7 +1112,7 @@ SBLK *blk;
     }
     if (lret != len) {
       puts("heap read error ");
-      exit(EXIT_FAILURE);
+      pk_fail(EXIT_FAILURE);
     }
     pmblk->nsizblk = pdblk->nsizblk;
     pmblk->ixblk = pdblk->ixblk;

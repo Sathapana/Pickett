@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "calpgm.h"
+#include "pktls.h"
 #define NDILINE 130
 
 int sortn(char *inpname, char *outname, int dokey);
@@ -12,7 +13,7 @@ int memsort(int nline, const int *key, char **pbuf);
 int memfind(int ibgn, int nbuf, const int *key, const char *buf0, 
             char **pbuf);
 
-static int ndline;
+static PK_TLS int ndline;
 
 int sortn(inpname, outname, dokey)
 char *inpname, *outname;
@@ -23,7 +24,7 @@ BOOL dokey;
   char *buf0, *buf, **pbuf;
   int nline, k, kk, mxline, nn, ntot;
   BOOL init, scrflg;
-  finp = fopen(inpname, "r");
+  finp = pk_fopen(inpname, "r");
   if (finp == NULL) {
     puts("no input file");
     return 1;
@@ -80,7 +81,7 @@ BOOL dokey;
       if (fscr != NULL) {
         fclose(fscr); fscr = fout;
       }
-      fout = fopen(outname, "w");
+      fout = pk_fopen(outname, "w");
     } else if (fout != NULL) {  /* MXLINE lines read without EOF after first pass */
       rewind(fscr);
       ftmp = fscr;

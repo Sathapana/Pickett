@@ -11,14 +11,15 @@
 #include <ctype.h>
 #include "calpgm.h"
 #include "spinit.h"
+#include "pktls.h"
 #define ODD(i)  (((int)(i) & 1) != 0)
 #define ODD2(i) (((int)(i) & 2) != 0)
 #define MOD(i,n) ((int)(i) % (int)(n))
 
-/*@null@*/ static ITMIX *itmix_head = NULL;
-/*@null@*/ static SITOT *ithead = NULL;
-static int fc_neqi;
-static double zrfc[MAXITOT], zifc[MAXITOT];
+/*@null@*/ static PK_TLS ITMIX *itmix_head = NULL;
+/*@null@*/ static PK_TLS SITOT *ithead = NULL;
+static PK_TLS int fc_neqi;
+static PK_TLS double zrfc[MAXITOT], zifc[MAXITOT];
 static double zero = 0.;
 
 /* spin coupling pairs, npair = (neqi - 1)
@@ -32,7 +33,7 @@ static int itpairs[] = {1,2,                      /* neqi = 2, npair = 1 */
                         6,10,7,9, 5,8, 0,1, 3,2}; /* neqi = 6, npair = 5 */
 /*                      ---  ---  ---- ---  ---                          */
 /*                       0    1    2    3    4                           */
-static int *itpair = itpairs;
+static PK_TLS int *itpair = itpairs;
 
 double ctrans(int i1, int i2, int ii, short *qn, int nqn, 
                       /*@null@*/ /*@out@*/ short *swk);
@@ -534,7 +535,7 @@ const int ii, neqi;
         val -= ctrans(k, i, ii, qn, neqi, swk);
         if (fabs(val) > 1.e-10) {
           puts(" center Itot matrix not symmetric");
-          exit(EXIT_FAILURE);
+          pk_fail(EXIT_FAILURE);
         }
       }
     }
@@ -582,7 +583,7 @@ const int ii, neqi;
           val += ctrans(j + ioff, i, ii, qn0, neqi, swk);
           if (fabs(val) > 1.e-10) {
             puts(" non-center Itot matrix is not antisymmetric");
-            exit(EXIT_FAILURE);
+            pk_fail(EXIT_FAILURE);
           }
         }
         sum *= cfac;

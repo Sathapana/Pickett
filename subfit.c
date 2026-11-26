@@ -13,6 +13,7 @@
 #include <string.h>
 #include <math.h>
 #include "calpgm.h"
+#include "pktls.h"
 
 int getlbl(npar, idpar, parlbl, fil, idiv, lblen)
 int npar, idiv, lblen;
@@ -289,13 +290,13 @@ int iflg, ipos;
   /*  iflg = 2, then write line at abs(ipos)            */
   /*  iflg < 0, then -iflg is number of derivatives     */
   /*            and ipos is the number of lines         */
-  static SXLINE head;
-  /*@owned@*/ static double **dheapv = NULL;
-  /*@owned@*/ static double *dheap = NULL;
-  /*@dependent@*/ static double *tail;
-  static FILE *scratch = NULL;
-  static size_t nbyte;
-  static int nbuf, bpos, tpos, next, maxrec, ndbl, dnuoff, rewrit;
+  static PK_TLS SXLINE head;
+  /*@owned@*/ static PK_TLS double **dheapv = NULL;
+  /*@owned@*/ static PK_TLS double *dheap = NULL;
+  /*@dependent@*/ static PK_TLS double *tail;
+  static PK_TLS FILE *scratch = NULL;
+  static PK_TLS size_t nbyte;
+  static PK_TLS int nbuf, bpos, tpos, next, maxrec, ndbl, dnuoff, rewrit;
   SXLINE *sret;
   double *pheap;
   size_t lpos, nline;
@@ -308,7 +309,7 @@ int iflg, ipos;
     }
     if (dheapv == NULL) {
       puts(" scratch used before initialization");
-      exit(EXIT_FAILURE);
+      pk_fail(EXIT_FAILURE);
     }
     /* find offset from buffer origin */
     if (ipos < 0)
@@ -374,7 +375,7 @@ int iflg, ipos;
         if (scratch == NULL || fseek(scratch, (long) lpos, SEEK_SET) != 0
             || (int) fwrite(pheap, nbyte, (size_t) n, scratch) != n) {
           puts(" scratch file write error");
-          exit(EXIT_FAILURE);
+          pk_fail(EXIT_FAILURE);
         }
       }
     }
@@ -399,7 +400,7 @@ int iflg, ipos;
         if (scratch == NULL || fseek(scratch, (long) lpos, SEEK_SET) != 0
             || (int) fread(pheap, nbyte, (size_t) n, scratch) != n) {
           printf("scratch file read error at %d\n", ipos);
-          exit(EXIT_FAILURE);
+          pk_fail(EXIT_FAILURE);
         }
       }
     }

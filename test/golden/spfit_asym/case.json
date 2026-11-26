@@ -1,0 +1,5 @@
+{
+  "description": "SPFIT, SO2-like asymmetric top: 50 synthetic lines from the spcat_asym catalog (every 4th line, +-0.02 MHz noise, err 0.05 MHz); all 8 Watson A constants floated.",
+  "steps": [{"program": "spfit", "args": ["asym"]}],
+  "outputs": ["asym.fit", "asym.par", "asym.var", "asym.bak"]
+}

@@ -1,0 +1,10 @@
+[package]
+name = "pickett"
+version = "0.1.0"
+edition.workspace = true
+description = "Predict and fit rotational spectra with SPCAT/SPFIT, in memory, with typed results"
+publish = false
+
+[dependencies]
+pickett-io = { path = "../pickett-io" }
+pickett-sys = { path = "../pickett-sys" }

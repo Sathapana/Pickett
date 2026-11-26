@@ -1,0 +1,8 @@
+[package]
+name = "pickett-io"
+version = "0.1.0"
+edition.workspace = true
+description = "Readers and writers for SPFIT/SPCAT (Pickett CALPGM) files: .par/.var, .lin, .int, .cat, .egy"
+publish = false
+
+[dependencies]

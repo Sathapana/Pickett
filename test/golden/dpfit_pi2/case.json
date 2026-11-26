@@ -1,0 +1,5 @@
+{
+  "description": "DPFIT, NO-like 2Pi: 68 synthetic hyperfine lines from the dpcat_pi2 catalog (every 3rd line, +-0.01 MHz noise, err 0.02 MHz); A fixed, 9 constants floated.",
+  "steps": [{"program": "dpfit", "args": ["pi2"]}],
+  "outputs": ["pi2.fit", "pi2.par", "pi2.var", "pi2.bak"]
+}
