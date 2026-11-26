@@ -70,7 +70,7 @@ SPCAT ในต้นฉบับคำนวณ partition function ที่ 7 
 mingw32-make all CFLAGS="-O2 -w"
 ```
 
-`CFLAGS="-O2 -w"` ช่วยซ่อนคำเตือนจากโค้ด C รุ่นเก่า ซึ่งไม่มีผลต่อความถูกต้อง เมื่อ build เสร็จจะได้ไฟล์ `spfit.exe`, `spcat.exe` และโปรแกรมอื่นรวม 14 ตัว
+`CFLAGS="-O2 -w"` ช่วยซ่อนคำเตือนจากโค้ด C รุ่นเก่า ซึ่งไม่มีผลต่อความถูกต้อง เมื่อ build เสร็จจะได้ไฟล์ `spfit.exe`, `spcat.exe` และโปรแกรมอื่นรวม 16 ตัว
 
 ### Linux / macOS
 
@@ -571,6 +571,9 @@ spcat mymol
 | `iambak` | แปลงผลฟิต IAM กลับเป็น input ของ `.iam` | `iambak mymol` |
 | `moiam` | คำนวณพารามิเตอร์เชิงโครงสร้างสำหรับ internal rotation จากพิกัดอะตอม | `moiam mymol` |
 | `cnvir` | แปลงความถี่และความคลาดเคลื่อนในไฟล์แคตตาล็อกจาก MHz เป็น cm⁻¹ | `cnvir input output` |
+| `hundscvt` | แปลงป้าย quantum number ระหว่าง Hund's case (a) และ (b) ในไฟล์แคตตาล็อก (โปรแกรมจะถามชื่อไฟล์) | `hundscvt` |
+
+ไฟล์โค้ดเก่าที่ไม่ได้ใช้แล้ว เช่น `spinv0.c` และเครื่องมือแคตตาล็อกของ JPL ถูกย้ายไปไว้ในโฟลเดอร์ [archive/](archive/) ดูรายละเอียดได้ที่ [archive/README.md](archive/README.md)
 
 ---
 

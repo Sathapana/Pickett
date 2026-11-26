@@ -14,3 +14,4 @@ This repository includes modifications by Kelvin Lee, primarily with modificatio
 - [documentation.md](documentation.md): developer guide (architecture, building, file formats, known issues)
 - [MANUAL_TH.md](MANUAL_TH.md): user manual in Thai (installation, quick start, file formats, troubleshooting)
 - [spinv.pdf](spinv.pdf), [dpi.pdf](dpi.pdf), [calpgm.pdf](calpgm.pdf): original manuals by H. M. Pickett
+- [archive/](archive/): superseded and unused files from the original distribution (see [archive/README.md](archive/README.md))

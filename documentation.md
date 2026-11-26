@@ -24,7 +24,7 @@ A user manual in Thai, with a step-by-step quick start and troubleshooting, is i
 12. [Rust high-level API: pickett](#rust-high-level-api-pickett)
 13. [Rust spectrum analysis: pickett-spectrum](#rust-spectrum-analysis-pickett-spectrum)
 14. [Python package: pickett](#python-package-pickett)
-15. [Legacy, alternate and unused files](#legacy-alternate-and-unused-files)
+15. [Archived files](#archived-files)
 16. [Known issues and caveats](#known-issues-and-caveats)
 17. [References](#references)
 
@@ -95,6 +95,7 @@ e2a6f56 First commit based on HSPM's code from 2008
 | [whats.new](whats.new) | Upstream changelog, 1999–2007 |
 | [test/](test/) | CH₃CN prolate symmetric-top reference case (see [below](#test-case-and-verification)), plus the golden-output regression suite in `test/golden/` and its runner `test/run_golden.py` (see [Regression tests](#regression-tests)) |
 | [README.md](README.md) | Short project description |
+| [archive/](archive/) | Superseded and unused files from the 2008 distribution (see [Archived files](#archived-files)) |
 
 ---
 
@@ -250,13 +251,13 @@ The active makefile is [Makefile](Makefile) (gcc, `-g -O3 -Wall`):
 
 ```sh
 make            # spfit spcat calmrg dpfit dpcat calbak
-make all        # also iamcalc moiam stark termval sortn reassign sortegy iambak
+make all        # also iamcalc moiam stark termval sortn reassign sortegy iambak cnvir hundscvt
 make selftest   # pkselftest_sp, pkselftest_dp (in-process test drivers)
 make install    # moves the default executables to /usr/local/bin
 make clean      # removes executables, *.o and splib.a
 ```
 
-`make all` was tested with `mingw32-make` and MinGW gcc 6.3 on Windows 11, and all 14 programs build. Add `CFLAGS="-O2 -w"` on the command line to hide the legacy-C warnings.
+`make all` was tested with `mingw32-make` and MinGW gcc 6.3 on Windows 11, and all 16 programs build. Add `CFLAGS="-O2 -w"` on the command line to hide the legacy-C warnings.
 
 BLAS selection (edit `BLASLIB` at the top of the Makefile):
 
@@ -268,14 +269,14 @@ BLAS selection (edit `BLASLIB` at the top of the Makefile):
 
 The bundled `dblas.o` goes into `splib.a` only when `BLASLIB` is empty.
 
-[Makefile.txt](Makefile.txt) is an older alternate makefile that the main `Makefile` now covers. [makefile.linux](makefile.linux) is an obsolete g77/Fortran-era makefile; see [Legacy files](#legacy-alternate-and-unused-files).
+The older alternate makefiles (`Makefile.txt` and the g77-era `makefile.linux`) are in [archive/build/](archive/build/); see [Archived files](#archived-files).
 
 ### Without `make` (e.g. Windows + MinGW gcc)
 
 The core programs are self-contained, so plain gcc works. These commands were tested with MinGW gcc 6.3 on Windows 11:
 
 ```sh
-LIB="ulib.c cnjj.c slibgcc.c catutil.c lsqfit.c dblas.c"
+LIB="ulib.c cnjj.c slibgcc.c pktmp.c catutil.c lsqfit.c dblas.c"
 gcc -O2 -o spfit calfitm.c calfit.c subfit.c spinv.c spinit.c $LIB -lm
 gcc -O2 -o spcat calcatm.c calcat.c sortsub.c spinv.c spinit.c $LIB -lm
 gcc -O2 -o dpfit calfitm.c calfit.c subfit.c dpi.c $LIB -lm
@@ -558,7 +559,7 @@ The outputs compared are those of the second run, so state left over from the fi
 | `cnvir` | [cnvir.c](cnvir.c) | Converts catalog-format frequency and error fields from MHz to cm⁻¹ |
 | `hundscvt` | [hundscvt.c](hundscvt.c) | Converts quantum-number labels between Hund's case (a) and (b) |
 
-The JPL catalog-access utilities ([catread.c](catread.c), [catread.h](catread.h), [catlist.c](catlist.c), [catform.c](catform.c)) read the JPL catalog directory structure. `catform.c` is a CGI web-form handler. They use old K&R C and `gets()`, and none of the makefiles builds them.
+The JPL catalog-access utilities (`catread.c`, `catlist.c`, `catform.c` and its CGI helpers in `util.c`) were never built by any makefile, and they are now in [archive/jpl-catalog-tools/](archive/jpl-catalog-tools/). Use `rust/pickett-io` (`CatFile`) to read and write catalogs.
 
 ---
 
@@ -846,18 +847,17 @@ The extension uses the stable ABI (`abi3`), so one wheel serves Python 3.9 and l
 
 ---
 
-## Legacy, alternate and unused files
+## Archived files
 
-| File | Status |
+Files that nothing builds, includes or tests are in [archive/](archive/), with their git history. [archive/README.md](archive/README.md) describes each one. Before they were moved, each was checked against the Makefile, `build.rs`, the `#include`s of every source and `test/run_golden.py`.
+
+| Folder | Files |
 |---|---|
-| [spinv0.c](spinv0.c) | Older SPINV (last revision 12 Dec 2005). [spinv.c](spinv.c) is the current one (adds the 10 Sept 2006 phase conventions). Not built. |
-| [calfitno.c](calfitno.c) | Older variant of `calfit.c` (pre-2001 iteration control). Not built. |
-| [dpix.c](dpix.c) | Variant of `dpi.c` with a different matrix-element pair table. Not built. |
-| [slibgen.c](slibgen.c) | Generic (non-gcc) version of the system library. `slibgcc.c` is the one used. |
-| [blas.c](blas.c), [blas.h](blas.h) | Pre-CBLAS BLAS subset. Replaced by `dblas.c`/`cblas.h`. |
-| [jelim.c](jelim.c), [util.c](util.c), [fdate.c](fdate.c), [testi.c](testi.c) | Small helpers and tests. `testi.c` prints C type sizes. Not built. |
-| [makefile.linux](makefile.linux) | Obsolete g77 makefile that refers to Fortran sources not present here (`calbak.f`, `cnvwn.f`, `slib.for`). |
-| `splib.a` | Build output (the static library built from the shared sources). It used to be committed as a pre-built binary and is now git-ignored. |
+| [archive/old-versions/](archive/old-versions/) | `spinv0.c` (older SPINV, Dec 2005), `calfitno.c` (older SPFIT driver), `dpix.c` (variant of `dpi.c`), `slibgen.c` (generic system library), `blas.c`/`blas.h` (pre-CBLAS BLAS), `jelim.c` (old `jelim`; the current one is in `lsqfit.c`), `fdate.c` (unused Fortran date helper), `testi.c` (prints C type sizes) |
+| [archive/jpl-catalog-tools/](archive/jpl-catalog-tools/) | `catread.c`/`catread.h`, `catlist.c`, `catform.c` (CGI) and `util.c` (its CGI helpers): JPL catalog directory tools, never built |
+| [archive/build/](archive/build/) | `makefile.linux` (g77 era), `Makefile.txt` (older alternate makefile) |
+
+`cnvir.c` and `hundscvt.c` were also outside the Makefile, but they are working tools, so they were added to `make all` instead of being archived. `splib.a` is build output (the static library made from the shared sources); it used to be committed as a pre-built binary and is now git-ignored.
 
 ---
 

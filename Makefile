@@ -2,7 +2,7 @@ CC=gcc
 CFLAGS=-g -O3 -Wall
 #CFLAGS=-O2 -Wall
 EXEQ=spfit spcat calmrg dpfit dpcat calbak
-EXEA=${EXEQ} iamcalc moiam stark termval sortn reassign sortegy iambak
+EXEA=${EXEQ} iamcalc moiam stark termval sortn reassign sortegy iambak cnvir hundscvt
 # in-process test drivers (see pkselftest.c and test/run_golden.py --inprocess)
 EXET=pkselftest_sp pkselftest_dp
 #next line for atlas blas
@@ -48,6 +48,8 @@ iamcalc: iamcalc.o ftran.o readopt.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm $(TH
 iambak: iambak.o readopt.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm $(THREADLIB)
 reassign: reassign.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm $(THREADLIB)
 sortegy: sortegy.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm $(THREADLIB)
+cnvir: cnvir.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm $(THREADLIB)
+hundscvt: hundscvt.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm $(THREADLIB)
 sortn: sortn.o sortsub.o splib.a; $(CC) -o $@ $^ $(THREADLIB)
 
 splib.a: ulib.o cnjj.o slibgcc.o pktmp.o catutil.o lsqfit.o $(LBLAS)
@@ -69,6 +71,8 @@ iamcalc.o:iamcalc.c $(HDR) ftran.h readopt.h
 iambak.o:iambak.c $(HDR) readopt.h
 reassign.o:reassign.c $(HDR)
 sortegy.o:sortegy.c $(HDR)
+cnvir.o:cnvir.c $(HDR)
+hundscvt.o:hundscvt.c $(HDR)
 moiam.o:moiam.c $(HDR)
 readopt.o:readopt.c readopt.h catutil.h
 ulib.o:ulib.c $(HDR)
