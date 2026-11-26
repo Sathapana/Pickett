@@ -70,7 +70,7 @@ SPCAT ในต้นฉบับคำนวณ partition function ที่ 7 
 mingw32-make all CFLAGS="-O2 -w"
 ```
 
-`CFLAGS="-O2 -w"` ช่วยซ่อนคำเตือนจากโค้ด C รุ่นเก่า ซึ่งไม่มีผลต่อความถูกต้อง เมื่อ build เสร็จจะได้ไฟล์ `spfit.exe`, `spcat.exe` และโปรแกรมอื่นรวม 16 ตัว
+`CFLAGS="-O2 -w"` ช่วยซ่อนคำเตือนจากโค้ด C รุ่นเก่า ซึ่งไม่มีผลต่อความถูกต้อง เมื่อ build เสร็จจะได้ไฟล์ `spfit.exe`, `spcat.exe` และโปรแกรมอื่นรวม 16 ตัว ไว้ในโฟลเดอร์ `bin\` ส่วนไฟล์ระหว่างทาง (`.o`, `splib.a`) อยู่ในโฟลเดอร์ `build\` และ `make clean` ลบทั้งสองโฟลเดอร์ให้
 
 ### Linux / macOS
 
@@ -97,7 +97,7 @@ sudo make install   # (ไม่บังคับ) ย้าย spfit spcat cal
 
 ## 3. เริ่มต้นใช้งาน: ทดลองกับ CH₃CN
 
-โฟลเดอร์ [test/](test/) มีตัวอย่างการทำนายสเปกตรัมของ **acetonitrile (CH₃CN)** ซึ่งเป็น prolate symmetric top บทนี้พาลองรัน SPCAT แล้วอ่านผลทีละขั้น
+โฟลเดอร์ [test/](../test/) มีตัวอย่างการทำนายสเปกตรัมของ **acetonitrile (CH₃CN)** ซึ่งเป็น prolate symmetric top บทนี้พาลองรัน SPCAT แล้วอ่านผลทีละขั้น
 
 ### ขั้นที่ 1: เตรียมโฟลเดอร์ทำงาน
 
@@ -105,20 +105,20 @@ sudo make install   # (ไม่บังคับ) ย้าย spfit spcat cal
 
 ```sh
 mkdir run
-cp test/prolate.int test/prolate.var run/
+cp test/prolate/prolate.int test/prolate/prolate.var run/
 cd run
 ```
 
 บน Windows PowerShell:
 
 ```powershell
-mkdir run; copy test\prolate.int run\; copy test\prolate.var run\; cd run
+mkdir run; copy test\prolate\prolate.int run\; copy test\prolate\prolate.var run\; cd run
 ```
 
 ### ขั้นที่ 2: รัน SPCAT
 
 ```sh
-../spcat prolate
+../bin/spcat prolate
 ```
 
 ให้ชื่อฐาน (base name) `prolate` เพียงชื่อเดียว โปรแกรมจะหาไฟล์ที่ต้องใช้และตั้งชื่อไฟล์ผลลัพธ์เอง:
@@ -192,8 +192,8 @@ TEMPERATURE - Q(SPIN-ROT.) - log Q(SPIN-ROT.)
 ### ขั้นที่ 5: ตรวจว่าผลถูกต้อง
 
 ```sh
-diff prolate.cat ../test/prolate.cat
-diff prolate.egy ../test/prolate.egy
+diff prolate.cat ../test/prolate/prolate.cat
+diff prolate.egy ../test/prolate/prolate.egy
 ```
 
 ถ้าไม่มีอะไรแสดงออกมา แปลว่าผลตรงกับไฟล์อ้างอิงทุกตัวอักษร
@@ -223,7 +223,7 @@ cp prolate.var chk.par
 จากนั้นรัน:
 
 ```sh
-../spfit chk
+../bin/spfit chk
 ```
 
 ในไฟล์ `chk.fit` จะเห็นตาราง obs−calc ดังนี้:
@@ -265,6 +265,8 @@ flowchart LR
 <a id="sec4-2"></a>
 
 ### 4.2 รัน SPFIT
+
+คำสั่งในบทนี้เขียนแบบสั้นว่า `spfit`, `spcat` เป็นต้น ซึ่งใช้ได้เมื่อเพิ่มโฟลเดอร์ `bin` ของ repo ไว้ใน `PATH` แล้ว ถ้ายังไม่ได้เพิ่ม ให้ระบุ path เต็มแทน เช่น `C:\dev\Pickett\bin\spfit mymol`
 
 ```sh
 spfit mymol
@@ -573,7 +575,7 @@ spcat mymol
 | `cnvir` | แปลงความถี่และความคลาดเคลื่อนในไฟล์แคตตาล็อกจาก MHz เป็น cm⁻¹ | `cnvir input output` |
 | `hundscvt` | แปลงป้าย quantum number ระหว่าง Hund's case (a) และ (b) ในไฟล์แคตตาล็อก (โปรแกรมจะถามชื่อไฟล์) | `hundscvt` |
 
-ไฟล์โค้ดเก่าที่ไม่ได้ใช้แล้ว เช่น `spinv0.c` และเครื่องมือแคตตาล็อกของ JPL ถูกย้ายไปไว้ในโฟลเดอร์ [archive/](archive/) ดูรายละเอียดได้ที่ [archive/README.md](archive/README.md)
+ไฟล์โค้ดเก่าที่ไม่ได้ใช้แล้ว เช่น `spinv0.c` และเครื่องมือแคตตาล็อกของ JPL ถูกย้ายไปไว้ในโฟลเดอร์ [archive/](../archive/) ดูรายละเอียดได้ที่ [archive/README.md](../archive/README.md)
 
 ---
 
@@ -585,7 +587,7 @@ spcat mymol
 |---|---|---|
 | `Trouble opening xxx` | หาไฟล์ไม่เจอ หรือสะกดชื่อฐานผิด | ตรวจว่าอยู่ในโฟลเดอร์ที่ถูกต้อง และไฟล์มีนามสกุลตรง (`.par`, `.lin`, `.int`, `.var`) |
 | ` ERROR IN READING  FIRST CARDS OF .INT` | ไฟล์ `.int` มีไม่ครบ 2 บรรทัดแรก หรือบรรทัด 2 อ่านเป็นตัวเลขไม่ได้ | ตรวจว่าบรรทัด 1 เป็นชื่อเรื่อง และบรรทัด 2 มีตัวเลขครบ |
-| `Error reading .VAR file` / `Error reading option lines` | บรรทัด 2 หรือบรรทัด option ใน `.par`/`.var` ผิดรูปแบบ | เทียบกับตัวอย่างใน `test/prolate.var` |
+| `Error reading .VAR file` / `Error reading option lines` | บรรทัด 2 หรือบรรทัด option ใน `.par`/`.var` ผิดรูปแบบ | เทียบกับตัวอย่างใน `test/prolate/prolate.var` |
 | ไม่มีเส้นใน `.cat` เลย หรือมีน้อยผิดปกติ | `STR0`/`STR1` สูงเกินไป, `FQLIM` ต่ำเกินไป, ช่วง `FBGN`–`FEND` แคบ หรือไดโพลเป็นศูนย์ | ลดเกณฑ์ความเข้ม (เช่น −15) เพิ่ม `FQLIM` และตรวจบรรทัดไดโพล |
 | ความเข้มใน `.cat` ผิดไปทั้งไฟล์เท่า ๆ กัน | `QROT` ไม่ตรงกับอุณหภูมิ `TEMP` | ใช้ค่า Q จากตารางท้าย `.out` ที่อุณหภูมิเดียวกันเป็น `QROT` |
 | `***** NEXT LINE NOT USED IN FIT` มีหลายเส้น | assign ผิด, ค่า `ERR` เล็กเกินจริง หรือโมเดลขาดพารามิเตอร์ | ตรวจ quantum number ของเส้นนั้น ปรับ `ERR` ให้สมจริง หรือเพิ่มพารามิเตอร์ distortion |
@@ -629,7 +631,7 @@ spcat mymol
 
 ## 10. อ่านและเขียนไฟล์ด้วย Rust (`pickett-io`)
 
-`pickett-io` คือ library ภาษา Rust ในโฟลเดอร์ [rust/pickett-io](rust/pickett-io) ใช้อ่านและเขียนไฟล์ของ SPFIT/SPCAT จากโปรแกรมของเราเองได้ โดยไม่ต้องรัน SPFIT/SPCAT และไม่ต้องแยก field เอง library นี้เป็นขั้นแรกของการเปลี่ยนชุดโปรแกรมให้เป็น library สำหรับวิเคราะห์สเปกตรัม
+`pickett-io` คือ library ภาษา Rust ในโฟลเดอร์ [rust/pickett-io](../rust/pickett-io) ใช้อ่านและเขียนไฟล์ของ SPFIT/SPCAT จากโปรแกรมของเราเองได้ โดยไม่ต้องรัน SPFIT/SPCAT และไม่ต้องแยก field เอง library นี้เป็นขั้นแรกของการเปลี่ยนชุดโปรแกรมให้เป็น library สำหรับวิเคราะห์สเปกตรัม
 
 ### ติดตั้ง Rust
 
@@ -724,7 +726,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## 11. รัน SPCAT/SPFIT จาก Rust (`pickett-sys`)
 
-`pickett-sys` อยู่ในโฟลเดอร์ [rust/pickett-sys](rust/pickett-sys) ใช้เรียก SPCAT, SPFIT, DPCAT และ DPFIT จากโปรแกรม Rust ได้โดยตรง เพราะโค้ด C ถูกคอมไพล์รวมเข้าไปในโปรแกรมของเรา จึงไม่ต้องหาไฟล์ `.exe` และไม่ต้องเปิด process ใหม่ ถ้าโปรแกรม C เจอข้อผิดพลาด ฟังก์ชันจะคืนค่า error กลับมา โปรแกรมของเราจะไม่ถูกปิดไปด้วย
+`pickett-sys` อยู่ในโฟลเดอร์ [rust/pickett-sys](../rust/pickett-sys) ใช้เรียก SPCAT, SPFIT, DPCAT และ DPFIT จากโปรแกรม Rust ได้โดยตรง เพราะโค้ด C ถูกคอมไพล์รวมเข้าไปในโปรแกรมของเรา จึงไม่ต้องหาไฟล์ `.exe` และไม่ต้องเปิด process ใหม่ ถ้าโปรแกรม C เจอข้อผิดพลาด ฟังก์ชันจะคืนค่า error กลับมา โปรแกรมของเราจะไม่ถูกปิดไปด้วย
 
 ### สิ่งที่ต้องมีเพิ่ม: gcc แบบ 64-bit
 
@@ -790,7 +792,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## 12. ทำนายและฟิตในหน่วยความจำ (`pickett`)
 
-`pickett` อยู่ในโฟลเดอร์ [rust/pickett](rust/pickett) เป็น API ระดับสูงที่แนะนำให้ใช้เขียนโปรแกรม มีสองฟังก์ชันหลัก:
+`pickett` อยู่ในโฟลเดอร์ [rust/pickett](../rust/pickett) เป็น API ระดับสูงที่แนะนำให้ใช้เขียนโปรแกรม มีสองฟังก์ชันหลัก:
 
 | ฟังก์ชัน | โปรแกรมที่รัน | รับเข้า | ได้ผลกลับมา |
 |---|---|---|---|
@@ -923,7 +925,7 @@ cargo run --release -p pickett --example bench -- ../test/golden/spcat_prolate/i
 
 ## 13. วิเคราะห์สเปกตรัมจากการทดลอง (`pickett-spectrum`)
 
-`pickett-spectrum` อยู่ในโฟลเดอร์ [rust/pickett-spectrum](rust/pickett-spectrum) ใช้แปลงสเปกตรัมที่วัดได้ให้เป็นไฟล์ `.lin` สำหรับ SPFIT ขั้นตอนมีดังนี้:
+`pickett-spectrum` อยู่ในโฟลเดอร์ [rust/pickett-spectrum](../rust/pickett-spectrum) ใช้แปลงสเปกตรัมที่วัดได้ให้เป็นไฟล์ `.lin` สำหรับ SPFIT ขั้นตอนมีดังนี้:
 
 ```mermaid
 flowchart LR
@@ -998,7 +1000,7 @@ cargo run --release -p pickett-spectrum --example analyze -- so2.txt pass3.par .
 
 ## 14. ใช้งานจาก Python และ Jupyter (`pickett`)
 
-package Python ชื่อ `pickett` อยู่ในโฟลเดอร์ [rust/pickett-py](rust/pickett-py) ใช้ทำงานทุกอย่างในบทที่ 10–13 จาก Python หรือ Jupyter ได้ ผลลัพธ์เป็น numpy array และแปลงเป็นตาราง pandas ได้ทันที
+package Python ชื่อ `pickett` อยู่ในโฟลเดอร์ [rust/pickett-py](../rust/pickett-py) ใช้ทำงานทุกอย่างในบทที่ 10–13 จาก Python หรือ Jupyter ได้ ผลลัพธ์เป็น numpy array และแปลงเป็นตาราง pandas ได้ทันที
 
 ### ติดตั้ง
 
@@ -1074,7 +1076,7 @@ results = pickett.predict_many([(v, "mol.int") for v in var_texts])
 
 ### Notebook ตัวอย่าง
 
-[rust/pickett-py/examples/quickstart.ipynb](rust/pickett-py/examples/quickstart.ipynb) อธิบายเป็นภาษาไทย พร้อมกราฟ ครอบคลุม:
+[rust/pickett-py/examples/quickstart.ipynb](../rust/pickett-py/examples/quickstart.ipynb) อธิบายเป็นภาษาไทย พร้อมกราฟ ครอบคลุม:
 - ทำนายสเปกตรัม CH₃CN
 - กราฟ Q(T)
 - ฟิตโมเลกุลแบบ SO₂

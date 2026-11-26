@@ -6,7 +6,7 @@ Run them all from the repository root:
 python test/run_golden.py
 ```
 
-The script builds the needed programs with `make` (or `mingw32-make`), runs each case in a temporary directory, and compares the outputs with `expected/`. See [documentation.md](../../documentation.md#regression-tests) and `python test/run_golden.py --help`.
+The script builds the needed programs with `make` (or `mingw32-make`), runs each case in a temporary directory, and compares the outputs with `expected/`. See [documentation.md](../../docs/documentation.md#regression-tests) and `python test/run_golden.py --help`.
 
 ## Layout
 
@@ -22,7 +22,7 @@ tools/cat2lin.py helper that made the synthetic .lin inputs
 
 | Case | Program | What it covers |
 |---|---|---|
-| `spcat_prolate` | SPCAT | CH₃CN prolate symmetric top, signed-K quanta, 1000→1 K partition-function table. Inputs and outputs are the original `test/prolate.*` files (2020, Linux reference), **not** regenerated. |
+| `spcat_prolate` | SPCAT | CH₃CN prolate symmetric top, signed-K quanta, 1000→1 K partition-function table. Inputs and outputs are the original `test/prolate/` files (2020, Linux reference), **not** regenerated. |
 | `spfit_prolate` | SPFIT | Same molecule. B, D_JK, D_J start from perturbed values, with C, D_JK, D_J ties (negative IDPAR). 58 lines. |
 | `spcat_asym` | SPCAT | SO₂-like asymmetric top (Watson A, 8 constants), b-type dipole, spin weights 1/0, N ≤ 20. Writes `.cat`, `.egy`, `.str`, `.out`. |
 | `spfit_asym` | SPFIT | All 8 Watson A constants floated from perturbed values. 50 b-type lines. |

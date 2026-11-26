@@ -52,38 +52,49 @@ e2a6f56 First commit based on HSPM's code from 2008
 
 ## Repository layout
 
+| Folder | Contents |
+|---|---|
+| [src/](../src/) | All C sources and headers of the suite |
+| [docs/](./) | This guide, the Thai manual [MANUAL_TH.md](MANUAL_TH.md), the original PDF manuals and [whats.new](whats.new) |
+| [test/](../test/) | The golden regression suite ([test/golden/](../test/golden/), [run_golden.py](../test/run_golden.py)) and the original CH₃CN files ([test/prolate/](../test/prolate/)) |
+| [rust/](../rust/) | The Rust crates and the Python package |
+| [archive/](../archive/) | Superseded and unused files from the 2008 distribution |
+| `bin/`, `build/` | Build output of the [Makefile](../Makefile): programs in `bin/`, objects and `splib.a` in `build/` (git-ignored) |
+
+The tables below list the files in `src/` by role.
+
 ### Main programs (drivers)
 
 | File | Program(s) | Role |
 |---|---|---|
-| [calfit.c](calfit.c) | `spfit`, `dpfit` | General non-linear least-squares line fitter (trust-region Marquardt–Levenberg) |
-| [subfit.c](subfit.c) | (linked with calfit) | Helpers for the fitter: parameter labels (`getlbl`), block lookup, `.par`→`.bak` backup (`filbak`), correlation printout |
-| [calcat.c](calcat.c) | `spcat`, `dpcat` | General frequency/intensity calculator; writes the `.cat` catalog and the partition function |
-| [sortsub.c](sortsub.c) | (linked with calcat, sortn) | External merge/heap sort used to sort the `.cat` file at the end of SPCAT |
-| [calmrg.c](calmrg.c) | `calmrg` | Merges a calculated `.cat` with experimental `.lin` lines |
-| [calcatm.c](calcatm.c), [calfitm.c](calfitm.c) | `spcat`/`dpcat`, `spfit`/`dpfit` | Two-line `main()`s that call `calcat_run()` / `calfit_run()` |
-| [pickett.h](pickett.h) | (library) | Public C entry points: `calcat_run`, `calfit_run`, `pk_library_mode`, `pk_fail` (see [Library entry points](#library-entry-points-picketth)) |
-| [pkselftest.c](pkselftest.c) | `pkselftest_sp`, `pkselftest_dp` | Test driver that runs the library twice in one process (see [Regression tests](#regression-tests)) |
+| [calfit.c](../src/calfit.c) | `spfit`, `dpfit` | General non-linear least-squares line fitter (trust-region Marquardt–Levenberg) |
+| [subfit.c](../src/subfit.c) | (linked with calfit) | Helpers for the fitter: parameter labels (`getlbl`), block lookup, `.par`→`.bak` backup (`filbak`), correlation printout |
+| [calcat.c](../src/calcat.c) | `spcat`, `dpcat` | General frequency/intensity calculator; writes the `.cat` catalog and the partition function |
+| [sortsub.c](../src/sortsub.c) | (linked with calcat, sortn) | External merge/heap sort used to sort the `.cat` file at the end of SPCAT |
+| [calmrg.c](../src/calmrg.c) | `calmrg` | Merges a calculated `.cat` with experimental `.lin` lines |
+| [calcatm.c](../src/calcatm.c), [calfitm.c](../src/calfitm.c) | `spcat`/`dpcat`, `spfit`/`dpfit` | Two-line `main()`s that call `calcat_run()` / `calfit_run()` |
+| [pickett.h](../src/pickett.h) | (library) | Public C entry points: `calcat_run`, `calfit_run`, `pk_library_mode`, `pk_fail` (see [Library entry points](#library-entry-points-picketth)) |
+| [pkselftest.c](../src/pkselftest.c) | `pkselftest_sp`, `pkselftest_dp` | Test driver that runs the library twice in one process (see [Regression tests](#regression-tests)) |
 
 ### Hamiltonian modules (one is linked into each fitter/calculator)
 
 | File | Used by | Physics |
 |---|---|---|
-| [spinv.c](spinv.c) + [spinit.c](spinit.c), [spinit.h](spinit.h) | `spfit`, `spcat` | Asymmetric/symmetric rotors and linear molecules with up to ~999 vibrational states and multiple spins, l-doubling, n-fold symmetric tops, Euler/Fourier series, Itot spin basis. `spinit.c` handles the spin eigenfunctions for sets of equivalent spins. |
-| [dpi.c](dpi.c) | `dpfit`, `dpcat` | Doublet-Π (²Π) states with one nuclear spin |
+| [spinv.c](../src/spinv.c) + [spinit.c](../src/spinit.c), [spinit.h](../src/spinit.h) | `spfit`, `spcat` | Asymmetric/symmetric rotors and linear molecules with up to ~999 vibrational states and multiple spins, l-doubling, n-fold symmetric tops, Euler/Fourier series, Itot spin basis. `spinit.c` handles the spin eigenfunctions for sets of equivalent spins. |
+| [dpi.c](../src/dpi.c) | `dpfit`, `dpcat` | Doublet-Π (²Π) states with one nuclear spin |
 
 ### Shared library (`splib.a`)
 
 | File | Contents |
 |---|---|
-| [ulib.c](ulib.c) | Generic utilities: diagonaliser (`hdiag`, `triag`), eigenvector ordering (`ordblk`), `.par`/`.var` I/O (`getpar`, `getvar`, `putvar`), `.lin` reading (`getlin`), BCD parameter-ID handling, error propagation (`calerr`) |
-| [cnjj.c](cnjj.c), [cnjj.h](cnjj.h) | 3j, 6j and 9j angular-momentum coupling coefficients (log-factorial tables) |
-| [slibgcc.c](slibgcc.c), [slib.h](slib.h) | System-dependent code: command-line/interactive file-name handling (`filget`), `fopenq`, memory sizing, time stamps. Also the library run control: `pk_fail`, memory files, message capture, result callbacks |
-| [pktmp.c](pktmp.c) | `pk_tmpfile()`, a `tmpfile()` that works for ordinary users on Windows; `pk_fpu_enter/leave()`, the fixed x87 precision for each run |
-| [pktls.h](pktls.h) | `PK_TLS`: thread-local storage for the library state |
-| [catutil.c](catutil.c), [catutil.h](catutil.h) | Quantum-number parsing (`readqn`), `pcard` free-format numeric parsing, catalog-format helpers |
-| [lsqfit.c](lsqfit.c), [lsqfit.h](lsqfit.h) | Least-squares kernel (Givens rotations, Marquardt step, rank-deficient handling) |
-| [dblas.c](dblas.c), [cblas.h](cblas.h) | Small bundled subset of CBLAS (`cblas_ddot`, `daxpy`, `drot`, …). It can be replaced by ATLAS or a system BLAS. |
+| [ulib.c](../src/ulib.c) | Generic utilities: diagonaliser (`hdiag`, `triag`), eigenvector ordering (`ordblk`), `.par`/`.var` I/O (`getpar`, `getvar`, `putvar`), `.lin` reading (`getlin`), BCD parameter-ID handling, error propagation (`calerr`) |
+| [cnjj.c](../src/cnjj.c), [cnjj.h](../src/cnjj.h) | 3j, 6j and 9j angular-momentum coupling coefficients (log-factorial tables) |
+| [slibgcc.c](../src/slibgcc.c), [slib.h](../src/slib.h) | System-dependent code: command-line/interactive file-name handling (`filget`), `fopenq`, memory sizing, time stamps. Also the library run control: `pk_fail`, memory files, message capture, result callbacks |
+| [pktmp.c](../src/pktmp.c) | `pk_tmpfile()`, a `tmpfile()` that works for ordinary users on Windows; `pk_fpu_enter/leave()`, the fixed x87 precision for each run |
+| [pktls.h](../src/pktls.h) | `PK_TLS`: thread-local storage for the library state |
+| [catutil.c](../src/catutil.c), [catutil.h](../src/catutil.h) | Quantum-number parsing (`readqn`), `pcard` free-format numeric parsing, catalog-format helpers |
+| [lsqfit.c](../src/lsqfit.c), [lsqfit.h](../src/lsqfit.h) | Least-squares kernel (Givens rotations, Marquardt step, rank-deficient handling) |
+| [dblas.c](../src/dblas.c), [cblas.h](../src/cblas.h) | Small bundled subset of CBLAS (`cblas_ddot`, `daxpy`, `drot`, …). It can be replaced by ATLAS or a system BLAS. |
 
 ### Documentation and data
 
@@ -93,15 +104,15 @@ e2a6f56 First commit based on HSPM's code from 2008
 | [spinv.pdf](spinv.pdf) | **Main reference** for SPFIT/SPCAT: quantum-number formats, `.lin`, `.par/.var`, `.int`, `.cat`, `.str`, `.egy` formats, operator and parameter IDs, special cases |
 | [dpi.pdf](dpi.pdf) | Reference for DPFIT/DPCAT parameters |
 | [whats.new](whats.new) | Upstream changelog, 1999–2007 |
-| [test/](test/) | CH₃CN prolate symmetric-top reference case (see [below](#test-case-and-verification)), plus the golden-output regression suite in `test/golden/` and its runner `test/run_golden.py` (see [Regression tests](#regression-tests)) |
-| [README.md](README.md) | Short project description |
-| [archive/](archive/) | Superseded and unused files from the 2008 distribution (see [Archived files](#archived-files)) |
+| [test/](../test/) | CH₃CN prolate symmetric-top reference case (see [below](#test-case-and-verification)), plus the golden-output regression suite in `test/golden/` and its runner `test/run_golden.py` (see [Regression tests](#regression-tests)) |
+| [README.md](../README.md) | Short project description |
+| [archive/](../archive/) | Superseded and unused files from the 2008 distribution (see [Archived files](#archived-files)) |
 
 ---
 
 ## Architecture
 
-The suite follows a **driver + plug-in Hamiltonian** design. The generic drivers (`calfit.c`, `calcat.c`) know nothing about molecular physics. They call a fixed set of functions declared in [calpgm.h](calpgm.h) under "SPINV or DPI interface". At link time you pick `spinv.o + spinit.o` or `dpi.o` to supply those functions.
+The suite follows a **driver + plug-in Hamiltonian** design. The generic drivers (`calfit.c`, `calcat.c`) know nothing about molecular physics. They call a fixed set of functions declared in [calpgm.h](../src/calpgm.h) under "SPINV or DPI interface". At link time you pick `spinv.o + spinit.o` or `dpi.o` to supply those functions.
 
 ```mermaid
 flowchart LR
@@ -191,7 +202,7 @@ How each piece works:
 
 The values are full `double`s, not the rounded file fields. For example, `.cat` keeps only 4 decimals of the frequency.
 
-**`pk_tmpfile()` ([pktmp.c](pktmp.c)).** On Windows, the C runtime's `tmpfile()` creates its file in the root of the current drive (`C:\`), which ordinary users usually cannot write to, so it returns NULL. This affected the original programs too: the `.cat` sort of large catalogs, the `ibufof()` disk buffer and SPFIT's line buffer all use `tmpfile()`. `calpgm.h` now maps `tmpfile()` to `pk_tmpfile()`, which uses the user's temporary folder (`GetTempPath`) and deletes the file when it is closed. On other systems it is `tmpfile()`.
+**`pk_tmpfile()` ([pktmp.c](../src/pktmp.c)).** On Windows, the C runtime's `tmpfile()` creates its file in the root of the current drive (`C:\`), which ordinary users usually cannot write to, so it returns NULL. This affected the original programs too: the `.cat` sort of large catalogs, the `ibufof()` disk buffer and SPFIT's line buffer all use `tmpfile()`. `calpgm.h` now maps `tmpfile()` to `pk_tmpfile()`, which uses the user's temporary folder (`GetTempPath`) and deletes the file when it is closed. On other systems it is `tmpfile()`.
 
 #### Threads (`pktls.h`)
 
@@ -209,7 +220,7 @@ Changes the conversion needed or uncovered:
 | `vinfo` / `dipinfo` start as NULL instead of `&vinfo1` / `&dipinfo0` | The address of a thread-local object is not a constant initializer. `setopt()` / `setint()` always set them before use |
 | `csym` in `setblk()` is a local array | It was a static that was swapped for every oblate rotor, so a second oblate run in the same process printed swapped symmetry labels |
 | `ixphase` is reset in `setopt()` | `setint()` adds to it for non-standard phase conventions, so it built up from run to run |
-| `pk_fpu_enter()` / `pk_fpu_leave()` ([pktmp.c](pktmp.c)) around every run | The math library uses x87 instructions on MinGW. The C runtime sets extended precision for the main thread, but new Windows threads start at 53-bit precision, which changed the last digits of results computed on other threads (e.g. S·μ² 4.876953976515408 vs …411). The run sets the runtime's default control word `0x037F` and restores the caller's |
+| `pk_fpu_enter()` / `pk_fpu_leave()` ([pktmp.c](../src/pktmp.c)) around every run | The math library uses x87 instructions on MinGW. The C runtime sets extended precision for the main thread, but new Windows threads start at 53-bit precision, which changed the last digits of results computed on other threads (e.g. S·μ² 4.876953976515408 vs …411). The run sets the runtime's default control word `0x037F` and restores the caller's |
 | `chtime()` uses `localtime_r` / `asctime_r` outside Windows | glibc's `localtime` / `asctime` share one buffer. The Microsoft runtime already uses per-thread buffers |
 
 **Speed.** The 64-bit gcc 16 build uses native Windows TLS (`.tls$`), so a single run is as fast as before: SPCAT prolate 604 ms against 595–675 ms before the change, asym 32 ms against 31–37 ms. gcc 6.3 (32-bit) emulates TLS with `__emutls` calls; this was not timed.
@@ -247,15 +258,18 @@ flowchart TB
 
 ### With `make` (Linux/macOS/MSYS2, or `mingw32-make` on Windows)
 
-The active makefile is [Makefile](Makefile) (gcc, `-g -O3 -Wall`):
+The active makefile is [Makefile](../Makefile) (gcc, `-g -O3 -Wall`):
 
 ```sh
 make            # spfit spcat calmrg dpfit dpcat calbak
 make all        # also iamcalc moiam stark termval sortn reassign sortegy iambak cnvir hundscvt
 make selftest   # pkselftest_sp, pkselftest_dp (in-process test drivers)
-make install    # moves the default executables to /usr/local/bin
-make clean      # removes executables, *.o and splib.a
+make install    # moves the default executables from bin/ to /usr/local/bin
+make clean      # removes bin/ and build/
+make spcat      # any single program by name
 ```
+
+The sources are read from `src/`. The programs go to `bin/`, and the objects and `splib.a` to `build/`. Every object depends on every header in `src/`, so a header change rebuilds everything; that is simple and never stale. On Windows the programs get `.exe`, so make sees them and does not relink when nothing changed.
 
 `make all` was tested with `mingw32-make` and MinGW gcc 6.3 on Windows 11, and all 16 programs build. Add `CFLAGS="-O2 -w"` on the command line to hide the legacy-C warnings.
 
@@ -269,19 +283,20 @@ BLAS selection (edit `BLASLIB` at the top of the Makefile):
 
 The bundled `dblas.o` goes into `splib.a` only when `BLASLIB` is empty.
 
-The older alternate makefiles (`Makefile.txt` and the g77-era `makefile.linux`) are in [archive/build/](archive/build/); see [Archived files](#archived-files).
+The older alternate makefiles (`Makefile.txt` and the g77-era `makefile.linux`) are in [archive/build/](../archive/build/); see [Archived files](#archived-files).
 
 ### Without `make` (e.g. Windows + MinGW gcc)
 
 The core programs are self-contained, so plain gcc works. These commands were tested with MinGW gcc 6.3 on Windows 11:
 
 ```sh
-LIB="ulib.c cnjj.c slibgcc.c pktmp.c catutil.c lsqfit.c dblas.c"
-gcc -O2 -o spfit calfitm.c calfit.c subfit.c spinv.c spinit.c $LIB -lm
-gcc -O2 -o spcat calcatm.c calcat.c sortsub.c spinv.c spinit.c $LIB -lm
-gcc -O2 -o dpfit calfitm.c calfit.c subfit.c dpi.c $LIB -lm
-gcc -O2 -o dpcat calcatm.c calcat.c sortsub.c dpi.c $LIB -lm
-gcc -O2 -o calmrg calmrg.c $LIB -lm
+mkdir -p bin
+LIB="src/ulib.c src/cnjj.c src/slibgcc.c src/pktmp.c src/catutil.c src/lsqfit.c src/dblas.c"
+gcc -O2 -Isrc -o bin/spfit src/calfitm.c src/calfit.c src/subfit.c src/spinv.c src/spinit.c $LIB -lm
+gcc -O2 -Isrc -o bin/spcat src/calcatm.c src/calcat.c src/sortsub.c src/spinv.c src/spinit.c $LIB -lm
+gcc -O2 -Isrc -o bin/dpfit src/calfitm.c src/calfit.c src/subfit.c src/dpi.c $LIB -lm
+gcc -O2 -Isrc -o bin/dpcat src/calcatm.c src/calcat.c src/sortsub.c src/dpi.c $LIB -lm
+gcc -O2 -Isrc -o bin/calmrg src/calmrg.c $LIB -lm
 ```
 
 The code is K&R/ANSI C from ~1999–2008, so a modern compiler prints many warnings (implicit `int`, old-style definitions). Add `-w` to silence them. gcc 15 and later default to C23, which rejects the old-style declarations: add `-std=gnu17`. That was tested with MSYS2's 64-bit gcc 16.2, and it is what `pickett-sys` uses.
@@ -294,7 +309,7 @@ All matrices are allocated dynamically. The heap-size hints `NDHEAPF`/`NDHEAPC` 
 
 ## Running the programs
 
-All programs share the file-name handling in `filget()` ([slibgcc.c](slibgcc.c)):
+After `make`, the programs are in `bin/`. Run them from there, or add `bin/` to your `PATH`. All programs share the file-name handling in `filget()` ([slibgcc.c](../src/slibgcc.c)):
 
 * **One base name** gives every file. `spcat prolate` reads `prolate.int` and `prolate.var` and writes `prolate.out`, `prolate.cat`, and so on.
 * **Explicit names** override single files: any argument whose extension matches a known one replaces that file. For example, `spfit mymol other.lin` uses `other.lin` but `mymol.par`.
@@ -328,7 +343,7 @@ All programs share the file-name handling in `filget()` ([slibgcc.c](slibgcc.c))
 
 ## File formats (summary)
 
-Free-format fields are parsed by `pcard()`. The definitive descriptions are in [spinv.pdf](spinv.pdf). The examples below come from [test/](test/).
+Free-format fields are parsed by `pcard()`. The definitive descriptions are in [spinv.pdf](spinv.pdf). The examples below come from [test/](../test/).
 
 ### `.par` / `.var` (parameters)
 
@@ -400,7 +415,7 @@ Per-iteration obs−calc table, blend handling, parameter values and uncertainti
 
 ## Fork modification: extended partition function
 
-**Commits:** `4066625`, `f5af2ff` (Kelvin Lee, Oct 2020). **File:** [calcat.c](calcat.c), near lines 55–170.
+**Commits:** `4066625`, `f5af2ff` (Kelvin Lee, Oct 2020). **File:** [calcat.c](../src/calcat.c), near lines 55–170.
 
 Upstream SPCAT evaluates the spin-rotation partition function at 8 fixed temperatures: 300, 225, 150, 75, 37.5, 18.75 and 9.375 K, plus the `.int` `TEMP`. This fork replaces them with a dense grid, so Q(T) can be tabulated without re-running SPCAT at each temperature:
 
@@ -449,7 +464,7 @@ The largest matrix in these cases is 51×51. For SPFIT, `hamx` is 4–15% of a 1
 **What was done instead: parallel partition sums, with unchanged results.**
 - The level loop no longer updates all 1000 sums for every level. It records one event per level, and one per shift of the energy zero (`pf_add`).
 - At the end, `pf_compute()` runs the original loop on those events, levels outside and decreasing temperatures inside, with the early `break` kept.
-- The temperatures are split into interleaved subsets (`k = part, part + n, …`), one per thread (`pk_run_parallel` in [pktmp.c](pktmp.c)).
+- The temperatures are split into interleaved subsets (`k = part, part + n, …`), one per thread (`pk_run_parallel` in [pktmp.c](../src/pktmp.c)).
 - Each temperature still gets the same operations in the same order, so the sums are **bit-identical** to the old code. This was checked by comparing the `.out`, `.cat`, `.egy` and `.str` of all three SPCAT/DPCAT golden cases, built from the previous commit and from this one with the same compiler, with 1 and 8 threads (22 comparisons, all identical).
 - Workers set the same x87 precision as the run (`pk_fpu_enter`).
 - Small jobs (fewer than 2×10⁶ level×temperature pairs) stay on one thread, because starting threads cost more for them.
@@ -477,7 +492,7 @@ cargo run --release -p pickett --example bench -- ../test/golden/spcat_prolate/i
 
 ## Test case and verification
 
-[test/](test/) holds a CH₃CN ground-state prolate symmetric-top prediction:
+[test/](../test/) holds a CH₃CN ground-state prolate symmetric-top prediction:
 
 | File | Role |
 |---|---|
@@ -490,24 +505,24 @@ cargo run --release -p pickett --example bench -- ../test/golden/spcat_prolate/i
 To reproduce the reference outputs:
 
 ```sh
-mkdir run && cp test/prolate.int test/prolate.var run/ && cd run
-../spcat prolate
-diff prolate.cat ../test/prolate.cat     # expect no differences
-diff prolate.egy ../test/prolate.egy     # expect no differences
-diff prolate.out ../test/prolate.out     # only the timestamp line differs on Linux
+mkdir run && cp test/prolate/prolate.int test/prolate/prolate.var run/ && cd run
+../bin/spcat prolate
+diff prolate.cat ../test/prolate/prolate.cat     # expect no differences
+diff prolate.egy ../test/prolate/prolate.egy     # expect no differences
+diff prolate.out ../test/prolate/prolate.out     # only the timestamp line differs on Linux
 ```
 
 This was checked on Windows 11 with MinGW gcc 6.3: `.cat` and `.egy` are byte-identical to the reference. `.out` differs only in the run timestamp and in Windows' three-digit exponent format (`E+005` vs `E+05`) in the echoed parameter table.
 
 ### Regression tests
 
-[test/run_golden.py](test/run_golden.py) checks the programs against known-good outputs in [test/golden/](test/golden/). It needs Python 3.6+ (standard library only), `make` (or `mingw32-make`) and gcc. One command builds and runs every case and reports pass/fail per file:
+[test/run_golden.py](../test/run_golden.py) checks the programs against known-good outputs in [test/golden/](../test/golden/). It needs Python 3.6+ (standard library only), `make` (or `mingw32-make`) and gcc. One command builds and runs every case and reports pass/fail per file:
 
 ```sh
 python test/run_golden.py
 ```
 
-The cases cover SPCAT and SPFIT (the prolate case above, plus an asymmetric top), DPCAT and DPFIT (a ²Π state with hyperfine), and calbak. [test/golden/README.md](test/golden/README.md) describes each case and how its inputs were made. Each case runs in a fresh temporary directory, which is kept for inspection if anything fails. The exit status is non-zero on any failure.
+The cases cover SPCAT and SPFIT (the prolate case above, plus an asymmetric top), DPCAT and DPFIT (a ²Π state with hyperfine), and calbak. [test/golden/README.md](../test/golden/README.md) describes each case and how its inputs were made. Each case runs in a fresh temporary directory, which is kept for inspection if anything fails. The exit status is non-zero on any failure.
 
 How files are compared:
 
@@ -546,26 +561,26 @@ The outputs compared are those of the second run, so state left over from the fi
 
 | Program | Source | Purpose |
 |---|---|---|
-| `calmrg` | [calmrg.c](calmrg.c) | Merges `.cat` predictions with experimental `.lin` data. Replaces calculated frequencies with measured ones and writes `.mrg`, plus `.new`/`.log` for unmatched or bad lines. |
-| `calbak` | [calbak.c](calbak.c) | Converts catalog-format lines back into a `.lin` file for SPFIT |
-| `termval` | [termval.c](termval.c) | Derives term values (energy levels) from a network of assigned lines (`.lin` → `.trm`, `.lgy`) |
-| `stark` | [stark.c](stark.c) | Computes Stark coefficients from the `.str` line-strength file → `.stk` |
-| `sortn` | [sortn.c](sortn.c) + [sortsub.c](sortsub.c) | Sorts catalog-format files by frequency |
-| `sortegy` | [sortegy.c](sortegy.c) | Sorts and relabels `.egy` energy files using rules in `.inp`/`.opt` |
-| `reassign` | [reassign.c](reassign.c) | Rewrites quantum-number assignments in a line file according to a key file |
-| `iamcalc` | [iamcalc.c](iamcalc.c) + [ftran.c](ftran.c), [readopt.c](readopt.c) | Internal-axis-method (IAM) internal-rotation calculations; generates `.par`/`.int` input for SPFIT/SPCAT |
-| `iambak` | [iambak.c](iambak.c) | Converts IAM fit parameters back to `.iam` input |
-| `moiam` | [moiam.c](moiam.c) + [ftran.c](ftran.c) | Internal-rotation structural parameters (moments of inertia) from geometry |
-| `cnvir` | [cnvir.c](cnvir.c) | Converts catalog-format frequency and error fields from MHz to cm⁻¹ |
-| `hundscvt` | [hundscvt.c](hundscvt.c) | Converts quantum-number labels between Hund's case (a) and (b) |
+| `calmrg` | [calmrg.c](../src/calmrg.c) | Merges `.cat` predictions with experimental `.lin` data. Replaces calculated frequencies with measured ones and writes `.mrg`, plus `.new`/`.log` for unmatched or bad lines. |
+| `calbak` | [calbak.c](../src/calbak.c) | Converts catalog-format lines back into a `.lin` file for SPFIT |
+| `termval` | [termval.c](../src/termval.c) | Derives term values (energy levels) from a network of assigned lines (`.lin` → `.trm`, `.lgy`) |
+| `stark` | [stark.c](../src/stark.c) | Computes Stark coefficients from the `.str` line-strength file → `.stk` |
+| `sortn` | [sortn.c](../src/sortn.c) + [sortsub.c](../src/sortsub.c) | Sorts catalog-format files by frequency |
+| `sortegy` | [sortegy.c](../src/sortegy.c) | Sorts and relabels `.egy` energy files using rules in `.inp`/`.opt` |
+| `reassign` | [reassign.c](../src/reassign.c) | Rewrites quantum-number assignments in a line file according to a key file |
+| `iamcalc` | [iamcalc.c](../src/iamcalc.c) + [ftran.c](../src/ftran.c), [readopt.c](../src/readopt.c) | Internal-axis-method (IAM) internal-rotation calculations; generates `.par`/`.int` input for SPFIT/SPCAT |
+| `iambak` | [iambak.c](../src/iambak.c) | Converts IAM fit parameters back to `.iam` input |
+| `moiam` | [moiam.c](../src/moiam.c) + [ftran.c](../src/ftran.c) | Internal-rotation structural parameters (moments of inertia) from geometry |
+| `cnvir` | [cnvir.c](../src/cnvir.c) | Converts catalog-format frequency and error fields from MHz to cm⁻¹ |
+| `hundscvt` | [hundscvt.c](../src/hundscvt.c) | Converts quantum-number labels between Hund's case (a) and (b) |
 
-The JPL catalog-access utilities (`catread.c`, `catlist.c`, `catform.c` and its CGI helpers in `util.c`) were never built by any makefile, and they are now in [archive/jpl-catalog-tools/](archive/jpl-catalog-tools/). Use `rust/pickett-io` (`CatFile`) to read and write catalogs.
+The JPL catalog-access utilities (`catread.c`, `catlist.c`, `catform.c` and its CGI helpers in `util.c`) were never built by any makefile, and they are now in [archive/jpl-catalog-tools/](../archive/jpl-catalog-tools/). Use `rust/pickett-io` (`CatFile`) to read and write catalogs.
 
 ---
 
 ## Rust file library: pickett-io
 
-[rust/pickett-io](rust/pickett-io) is a Rust crate that reads and writes the suite's files without running the programs. It has no dependencies. It is step 1 of turning the suite into a library; later steps will call the C Hamiltonian code in-process.
+[rust/pickett-io](../rust/pickett-io) is a Rust crate that reads and writes the suite's files without running the programs. It has no dependencies. It is step 1 of turning the suite into a library; later steps will call the C Hamiltonian code in-process.
 
 | Type | Files | Reader follows | Writer format |
 |---|---|---|---|
@@ -611,7 +626,7 @@ Points to know:
 
 ## Rust in-process runner: pickett-sys
 
-[rust/pickett-sys](rust/pickett-sys) compiles the C code and links it into Rust, so SPCAT, SPFIT, DPCAT and DPFIT run inside the calling process (see [Library entry points](#library-entry-points-picketth)).
+[rust/pickett-sys](../rust/pickett-sys) compiles the C code and links it into Rust, so SPCAT, SPFIT, DPCAT and DPFIT run inside the calling process (see [Library entry points](#library-entry-points-picketth)).
 
 ```rust
 use pickett_sys::{run_in, Program};
@@ -668,7 +683,7 @@ This was tested with gcc 16.2 (MSYS2) and Rust 1.100 on Windows 11. Linking work
 
 ## Rust high-level API: pickett
 
-[rust/pickett](rust/pickett) is the API meant for applications. It takes and returns `pickett-io` types, and runs everything in memory through `pickett-sys`.
+[rust/pickett](../rust/pickett) is the API meant for applications. It takes and returns `pickett-io` types, and runs everything in memory through `pickett-sys`.
 
 ```rust
 use pickett::{fit, predict, Flavor, IntFile, LinFile, ParFile};
@@ -716,7 +731,7 @@ The small case gains less because much of its time goes into the temporary files
 
 ## Rust spectrum analysis: pickett-spectrum
 
-[rust/pickett-spectrum](rust/pickett-spectrum) turns a measured spectrum into assigned lines for SPFIT. It is pure Rust with no dependencies; it uses the `pickett-io` catalog and `.lin` types. The C code is only needed for the predictions and fits, which come from the `pickett` crate.
+[rust/pickett-spectrum](../rust/pickett-spectrum) turns a measured spectrum into assigned lines for SPFIT. It is pure Rust with no dependencies; it uses the `pickett-io` catalog and `.lin` types. The C code is only needed for the predictions and fits, which come from the `pickett` crate.
 
 ```rust
 use pickett_spectrum::{assign::*, baseline::*, fit::*, peaks::*, Spectrum};
@@ -786,7 +801,7 @@ Limits:
 
 ## Python package: pickett
 
-[rust/pickett-py](rust/pickett-py) is a Python package built with PyO3 and maturin. Its native module `pickett._native` wraps the `pickett` and `pickett-spectrum` crates. The Python layer (`python/pickett/`) adds classes, pandas tables and file-path handling.
+[rust/pickett-py](../rust/pickett-py) is a Python package built with PyO3 and maturin. Its native module `pickett._native` wraps the `pickett` and `pickett-spectrum` crates. The Python layer (`python/pickett/`) adds classes, pandas tables and file-path handling.
 
 ```python
 import pickett
@@ -843,19 +858,19 @@ The extension uses the stable ABI (`abi3`), so one wheel serves Python 3.9 and l
 - the spectrum tools;
 - a closed loop in Python: simulated spectrum, assignment passes and SPFIT, which recovers A from the perturbed start.
 
-**Notebook:** [rust/pickett-py/examples/quickstart.ipynb](rust/pickett-py/examples/quickstart.ipynb) walks through the whole workflow with plots: prediction, Q(T), fit, spectrum analysis and assignment, and a parallel parameter scan. It is stored without outputs. Executed with nbclient, it runs without errors in about 15 s.
+**Notebook:** [rust/pickett-py/examples/quickstart.ipynb](../rust/pickett-py/examples/quickstart.ipynb) walks through the whole workflow with plots: prediction, Q(T), fit, spectrum analysis and assignment, and a parallel parameter scan. It is stored without outputs. Executed with nbclient, it runs without errors in about 15 s.
 
 ---
 
 ## Archived files
 
-Files that nothing builds, includes or tests are in [archive/](archive/), with their git history. [archive/README.md](archive/README.md) describes each one. Before they were moved, each was checked against the Makefile, `build.rs`, the `#include`s of every source and `test/run_golden.py`.
+Files that nothing builds, includes or tests are in [archive/](../archive/), with their git history. [archive/README.md](../archive/README.md) describes each one. Before they were moved, each was checked against the Makefile, `build.rs`, the `#include`s of every source and `test/run_golden.py`.
 
 | Folder | Files |
 |---|---|
-| [archive/old-versions/](archive/old-versions/) | `spinv0.c` (older SPINV, Dec 2005), `calfitno.c` (older SPFIT driver), `dpix.c` (variant of `dpi.c`), `slibgen.c` (generic system library), `blas.c`/`blas.h` (pre-CBLAS BLAS), `jelim.c` (old `jelim`; the current one is in `lsqfit.c`), `fdate.c` (unused Fortran date helper), `testi.c` (prints C type sizes) |
-| [archive/jpl-catalog-tools/](archive/jpl-catalog-tools/) | `catread.c`/`catread.h`, `catlist.c`, `catform.c` (CGI) and `util.c` (its CGI helpers): JPL catalog directory tools, never built |
-| [archive/build/](archive/build/) | `makefile.linux` (g77 era), `Makefile.txt` (older alternate makefile) |
+| [archive/old-versions/](../archive/old-versions/) | `spinv0.c` (older SPINV, Dec 2005), `calfitno.c` (older SPFIT driver), `dpix.c` (variant of `dpi.c`), `slibgen.c` (generic system library), `blas.c`/`blas.h` (pre-CBLAS BLAS), `jelim.c` (old `jelim`; the current one is in `lsqfit.c`), `fdate.c` (unused Fortran date helper), `testi.c` (prints C type sizes) |
+| [archive/jpl-catalog-tools/](../archive/jpl-catalog-tools/) | `catread.c`/`catread.h`, `catlist.c`, `catform.c` (CGI) and `util.c` (its CGI helpers): JPL catalog directory tools, never built |
+| [archive/build/](../archive/build/) | `makefile.linux` (g77 era), `Makefile.txt` (older alternate makefile) |
 
 `cnvir.c` and `hundscvt.c` were also outside the Makefile, but they are working tools, so they were added to `make all` instead of being archived. `splib.a` is build output (the static library made from the shared sources); it used to be committed as a pre-built binary and is now git-ignored.
 
@@ -874,13 +889,13 @@ These were present in the 2008/2020 code and have been fixed:
 
 | Issue | Fix |
 |---|---|
-| `iamcalc.c` included the missing `ftran.h` | Added [ftran.h](ftran.h) with the `ftran()` prototype |
-| `iamcalc` link rule left out `readopt.o`; `iambak`, `reassign` and `sortegy` were missing | Added them to the [Makefile](Makefile) and to `make all` |
+| `iamcalc.c` included the missing `ftran.h` | Added [ftran.h](../src/ftran.h) with the `ftran()` prototype |
+| `iamcalc` link rule left out `readopt.o`; `iambak`, `reassign` and `sortegy` were missing | Added them to the [Makefile](../Makefile) and to `make all` |
 | `cnvwn` target pointed to a non-existent `cnvwn.c`, and the `calbak` rule was defined twice | Removed the dead target and the duplicate rule |
 | `ifndef ($(BLASLIB))` always linked the bundled BLAS | Replaced it with `ifeq ($(strip $(BLASLIB)),)` |
 | `calmrg.c` defined its own `unlink()`, which clashes with the C library on MinGW/Windows | Renamed it to `exptunlink()` (file-local) |
 | Pre-built `splib.a` was committed, and `.gitignore` only covered `*.o` | Stopped tracking `splib.a`; `.gitignore` now covers `*.a`, `*.exe` and the built programs; added `make clean` |
-| On Windows, `tmpfile()` (used for large-catalog sorting and scratch buffers) writes to the drive root and fails for ordinary users | `pk_tmpfile()` in [pktmp.c](pktmp.c), using the user's temporary folder |
+| On Windows, `tmpfile()` (used for large-catalog sorting and scratch buffers) writes to the drive root and fails for ordinary users | `pk_tmpfile()` in [pktmp.c](../src/pktmp.c), using the user's temporary folder |
 
 ---
 

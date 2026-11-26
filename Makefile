@@ -1,9 +1,17 @@
+# Builds the CALPGM programs from src/ into bin/ (objects and splib.a in build/).
+#   make            spfit spcat calmrg dpfit dpcat calbak
+#   make all        every program
+#   make selftest   in-process test drivers (see src/pkselftest.c, test/run_golden.py --inprocess)
+#   make spcat      one program (any name below works the same way)
+#   make clean      remove build/ and bin/
 CC=gcc
 CFLAGS=-g -O3 -Wall
 #CFLAGS=-O2 -Wall
+SRC=src
+BUILD=build
+BIN=bin
 EXEQ=spfit spcat calmrg dpfit dpcat calbak
 EXEA=${EXEQ} iamcalc moiam stark termval sortn reassign sortegy iambak cnvir hundscvt
-# in-process test drivers (see pkselftest.c and test/run_golden.py --inprocess)
 EXET=pkselftest_sp pkselftest_dp
 #next line for atlas blas
 #BLASLIB=-lcblas -latlas
@@ -13,76 +21,69 @@ EXET=pkselftest_sp pkselftest_dp
 BLASLIB=
 # use the bundled BLAS subset (dblas.c) only when no external BLAS is given
 ifeq ($(strip $(BLASLIB)),)
-LBLAS=dblas.o
+LBLAS=dblas
 endif
-# pktmp.c uses threads for the partition-function table: POSIX needs pthread
 ifeq ($(OS),Windows_NT)
+EXE=.exe
+# pktmp.c uses threads for the partition-function table: POSIX needs pthread
 THREADLIB=
 else
+EXE=
 THREADLIB=-lpthread
 endif
-# headers that every calpgm.h user depends on
-HDR=calpgm.h slib.h pickett.h
+
+# Objects of each program, besides build/splib.a.
+# SPFIT/SPCAT use spinv.c + spinit.c, DPFIT/DPCAT use dpi.c.
+# calfitm.c/calcatm.c hold main(); the programs are calfit_run()/calcat_run().
+OBJ_spfit=calfitm calfit subfit spinv spinit
+OBJ_spcat=calcatm calcat sortsub spinv spinit
+OBJ_dpfit=calfitm calfit subfit dpi
+OBJ_dpcat=calcatm calcat sortsub dpi
+OBJ_pkselftest_sp=pkselftest calcat calfit subfit sortsub spinv spinit
+OBJ_pkselftest_dp=pkselftest calcat calfit subfit sortsub dpi
+OBJ_calmrg=calmrg
+OBJ_calbak=calbak
+OBJ_termval=termval
+OBJ_stark=stark
+OBJ_moiam=moiam ftran
+OBJ_iamcalc=iamcalc ftran readopt
+OBJ_iambak=iambak readopt
+OBJ_reassign=reassign
+OBJ_sortegy=sortegy
+OBJ_cnvir=cnvir
+OBJ_hundscvt=hundscvt
+OBJ_sortn=sortn sortsub
+# the shared library
+OBJ_splib=ulib cnjj slibgcc pktmp catutil lsqfit $(LBLAS)
+
+objs=$(addprefix $(BUILD)/,$(addsuffix .o,$(1)))
+
 default: ${EXEQ}
 all: ${EXEA}
 selftest: ${EXET}
-install:
-	-mv ${EXEQ} /usr/local/bin
+install: ${EXEQ}
+	-mv $(addprefix $(BIN)/,$(addsuffix $(EXE),${EXEQ})) /usr/local/bin
 clean:
-	rm -f ${EXEA} ${EXET} *.o splib.a
+	rm -rf $(BUILD) $(BIN)
 .PHONY: default all selftest install clean
-# SPFIT/SPCAT use spinv.c + spinit.c, DPFIT/DPCAT use dpi.c.
-# calfitm.c/calcatm.c hold main(); the programs are calfit_run()/calcat_run().
-dpfit: calfitm.o calfit.o subfit.o dpi.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm $(THREADLIB)
-dpcat: calcatm.o calcat.o sortsub.o dpi.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm $(THREADLIB)
-spfit: calfitm.o calfit.o subfit.o spinv.o spinit.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm $(THREADLIB)
-spcat: calcatm.o calcat.o sortsub.o spinv.o spinit.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm $(THREADLIB)
-pkselftest_sp: pkselftest.o calcat.o calfit.o subfit.o sortsub.o spinv.o spinit.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm $(THREADLIB)
-pkselftest_dp: pkselftest.o calcat.o calfit.o subfit.o sortsub.o dpi.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm $(THREADLIB)
-calmrg: calmrg.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm $(THREADLIB)
-calbak: calbak.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm $(THREADLIB)
-termval: termval.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm $(THREADLIB)
-stark: stark.o splib.a ; $(CC) -o $@ $^ $(BLASLIB) -lm $(THREADLIB)
-moiam: moiam.o ftran.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm $(THREADLIB)
-iamcalc: iamcalc.o ftran.o readopt.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm $(THREADLIB)
-iambak: iambak.o readopt.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm $(THREADLIB)
-reassign: reassign.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm $(THREADLIB)
-sortegy: sortegy.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm $(THREADLIB)
-cnvir: cnvir.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm $(THREADLIB)
-hundscvt: hundscvt.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm $(THREADLIB)
-sortn: sortn.o sortsub.o splib.a; $(CC) -o $@ $^ $(THREADLIB)
 
-splib.a: ulib.o cnjj.o slibgcc.o pktmp.o catutil.o lsqfit.o $(LBLAS)
-	ar r splib.a $^
-	ranlib splib.a
+# bin/<name> from its objects; `make <name>` is an alias for it
+define PROGRAM
+$(BIN)/$(1)$(EXE): $$(call objs,$$(OBJ_$(1))) $(BUILD)/splib.a | $(BIN)
+	$$(CC) -o $$@ $$^ $$(BLASLIB) -lm $$(THREADLIB)
+$(1): $(BIN)/$(1)$(EXE)
+.PHONY: $(1)
+endef
+$(foreach p,$(EXEA) $(EXET),$(eval $(call PROGRAM,$(p))))
 
-calfit.o:calfit.c $(HDR)
-calfitm.o:calfitm.c pickett.h
-subfit.o:subfit.c $(HDR)
-lsqfit.o:lsqfit.c lsqfit.h
-calcat.o:calcat.c $(HDR)
-calcatm.o:calcatm.c pickett.h
-pkselftest.o:pkselftest.c pickett.h
-sortsub.o: sortsub.c $(HDR)
-calmrg.o:calmrg.c $(HDR)
-termval.o:termval.c $(HDR)
-stark.o:stark.c $(HDR)
-iamcalc.o:iamcalc.c $(HDR) ftran.h readopt.h
-iambak.o:iambak.c $(HDR) readopt.h
-reassign.o:reassign.c $(HDR)
-sortegy.o:sortegy.c $(HDR)
-cnvir.o:cnvir.c $(HDR)
-hundscvt.o:hundscvt.c $(HDR)
-moiam.o:moiam.c $(HDR)
-readopt.o:readopt.c readopt.h catutil.h
-ulib.o:ulib.c $(HDR)
-cnjj.o:cnjj.c cnjj.h
-slibgcc.o:slibgcc.c slib.h pickett.h
-pktmp.o:pktmp.c
-spinv.o:spinv.c $(HDR) spinit.h
-spinit.o:spinit.c $(HDR) spinit.h
-dpi.o:dpi.c $(HDR)
-ftran.o:ftran.c ftran.h
-sortn.o: sortn.c
-dblas.o: dblas.c cblas.h
-calbak.o:calbak.c $(HDR)
+$(BUILD)/splib.a: $(call objs,$(OBJ_splib))
+	rm -f $@
+	ar r $@ $^
+	ranlib $@
+
+# every object depends on every header: simple, and never stale
+$(BUILD)/%.o: $(SRC)/%.c $(wildcard $(SRC)/*.h) | $(BUILD)
+	$(CC) $(CFLAGS) -I$(SRC) -c $< -o $@
+
+$(BUILD) $(BIN):
+	mkdir -p $@

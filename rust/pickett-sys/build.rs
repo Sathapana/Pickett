@@ -1,4 +1,4 @@
-//! Compiles the CALPGM C sources from the repository root into one static
+//! Compiles the CALPGM C sources in the repository's `src/` into one static
 //! library, `libpickett.a`, with no build dependencies: it calls gcc and ar
 //! directly.
 //!
@@ -47,7 +47,7 @@ struct Tool {
 
 fn main() {
     let manifest = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
-    let src = strip_verbatim(manifest.join("../..").canonicalize().expect("repository root"));
+    let src = strip_verbatim(manifest.join("../../src").canonicalize().expect("the repository's src/ folder"));
     let out = PathBuf::from(env::var_os("OUT_DIR").unwrap());
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
     let target_env = env::var("CARGO_CFG_TARGET_ENV").unwrap_or_default();

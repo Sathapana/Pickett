@@ -36,7 +36,7 @@ use std::sync::Mutex;
 mod memory;
 pub use memory::{run_memory, CatLineRecord, FitIterationRecord, FitParamRecord, LevelRecord, MemoryRun, Records};
 
-/// Raw entry points (see `pickett.h` in the repository root).
+/// Raw entry points (see `src/pickett.h` in the repository).
 pub mod ffi {
     use std::ffi::{c_char, c_int, c_long, c_short, c_void};
 

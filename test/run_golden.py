@@ -4,7 +4,7 @@ DPFIT, DPCAT, calbak).
 
     python test/run_golden.py            # build with make, run every case
     python test/run_golden.py -k spfit   # only cases whose name contains "spfit"
-    python test/run_golden.py --no-build # use the executables already built
+    python test/run_golden.py --no-build # use the executables already built (in bin/)
     python test/run_golden.py --update   # rewrite expected/ from this build
     python test/run_golden.py --inprocess
         # run SPCAT/SPFIT/DPCAT/DPFIT through the library entry points
@@ -271,8 +271,8 @@ def main():
     ap.add_argument("--make", help="make command (default: make, mingw32-make or gmake)")
     ap.add_argument("--make-arg", action="append", default=[], metavar="ARG",
                     help="extra make argument, e.g. CFLAGS=-O0 (repeatable)")
-    ap.add_argument("--bindir", default=REPO,
-                    help="directory holding the executables (default: repo root)")
+    ap.add_argument("--bindir", default=os.path.join(REPO, "bin"),
+                    help="directory holding the executables (default: bin/, where make puts them)")
     ap.add_argument("--golden", default=GOLDEN,
                     help="directory holding the cases (default: test/golden)")
     ap.add_argument("--rtol", type=float, default=DEFAULT_RTOL,

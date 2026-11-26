@@ -6,7 +6,7 @@ Files from the original 2008 distribution that nothing builds, includes or tests
 - no remaining source file includes them;
 - `test/run_golden.py` does not use them.
 
-Before they were moved, each file was checked against all of the above. To use one again, move it back to the repository root and add it to the Makefile.
+Before they were moved, each file was checked against all of the above. To use one again, move it back to `src/` and add it to the Makefile.
 
 ## old-versions/: superseded copies of current code
 
@@ -30,7 +30,7 @@ Before they were moved, each file was checked against all of the above. To use o
 | `catform.c` | CGI handler of the JPL catalog web form |
 | `util.c` | CGI helpers (`makeword`, `unescape_url`, …), used only by `catform.c` |
 
-These are old K&R C, and `catlist.c` uses `gets()`, which modern C no longer has. `catread.c` includes `catutil.h` from the repository root. No makefile ever built them. To read and write catalog files today, use `rust/pickett-io` (`CatFile`).
+These are old K&R C, and `catlist.c` uses `gets()`, which modern C no longer has. `catread.c` includes `catutil.h` from `src/`. No makefile ever built them. To read and write catalog files today, use `rust/pickett-io` (`CatFile`).
 
 ## build/: obsolete makefiles
 

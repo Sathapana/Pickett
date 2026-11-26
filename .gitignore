@@ -1,25 +1,9 @@
 *.o
 *.a
 *.exe
-# built executables
-/spfit
-/spcat
-/dpfit
-/dpcat
-/calmrg
-/calbak
-/iamcalc
-/moiam
-/stark
-/termval
-/sortn
-/reassign
-/sortegy
-/iambak
-/cnvir
-/hundscvt
-/pkselftest_sp
-/pkselftest_dp
+# build output of the Makefile (programs in bin/, objects in build/)
+/bin/
+/build/
 # Rust build output
 /rust/target/
 # Python build output
