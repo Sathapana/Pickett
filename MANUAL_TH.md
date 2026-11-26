@@ -21,7 +21,8 @@
 11. [รัน SPCAT/SPFIT จาก Rust (`pickett-sys`)](#ch11)
 12. [ทำนายและฟิตในหน่วยความจำ (`pickett`)](#ch12)
 13. [วิเคราะห์สเปกตรัมจากการทดลอง (`pickett-spectrum`)](#ch13)
-14. [เอกสารอ้างอิง](#ch14)
+14. [ใช้งานจาก Python และ Jupyter (`pickett`)](#ch14)
+15. [เอกสารอ้างอิง](#ch15)
 
 ---
 
@@ -992,7 +993,98 @@ cargo run --release -p pickett-spectrum --example analyze -- so2.txt pass3.par .
 
 <a id="ch14"></a>
 
-## 14. เอกสารอ้างอิง
+## 14. ใช้งานจาก Python และ Jupyter (`pickett`)
+
+package Python ชื่อ `pickett` อยู่ในโฟลเดอร์ [rust/pickett-py](rust/pickett-py) ใช้ทำงานทุกอย่างในบทที่ 10–13 จาก Python หรือ Jupyter ได้ ผลลัพธ์เป็น numpy array และแปลงเป็นตาราง pandas ได้ทันที
+
+### ติดตั้ง
+
+ต้องมี Rust (บทที่ 10) และ gcc แบบ 64-bit จาก MSYS2 (บทที่ 11) ก่อน จากนั้นรันใน PowerShell:
+
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install maturin numpy pandas matplotlib
+cd rust\pickett-py
+maturin develop --release
+```
+
+- `maturin develop` จะ build แล้วติดตั้ง package ลงใน environment ที่เปิดอยู่
+- ถ้าต้องการไฟล์ wheel ไว้แจกจ่าย ให้ใช้ `maturin build --release` แทน ไฟล์จะอยู่ที่ `rust\target\wheels`
+- wheel ที่ได้ใช้กับ Python ได้ตั้งแต่ 3.9 ขึ้นไป
+
+ตรวจว่าติดตั้งสำเร็จด้วย:
+
+```powershell
+python -m pytest rust\pickett-py\tests
+```
+
+ผลที่ควรได้คือ 14 passed
+
+### ทำนายและฟิต
+
+```python
+import pickett
+
+fit = pickett.fit("mol.par", "mol.lin")          # SPFIT รับได้ทั้ง path และข้อความในไฟล์
+print(fit.rms_error)
+fit.params_frame()                               # ตาราง pandas ของพารามิเตอร์
+
+pred = pickett.predict(fit.var, "mol.int")       # SPCAT ด้วย .var ที่เพิ่งฟิตได้
+pred.lines["freq"]                               # numpy array ความละเอียดเต็ม
+pred.lines_frame()                               # ตาราง pandas ของเส้นสเปกตรัม
+pred.partition_at(300.0)                         # Q ที่ 300 K
+```
+
+ถ้าเป็นโมเลกุลสถานะ ²Π ให้ใส่ `flavor="dpi"` ส่วนถ้าโปรแกรม C เกิด error จะได้ `pickett.PickettError` และอ่านข้อความของโปรแกรมได้จาก `e.log`
+
+### วิเคราะห์สเปกตรัม
+
+```python
+from pickett import spectrum as sp
+
+f, y = sp.read("scan.txt")                                   # อ่านไฟล์สเปกตรัม
+flat = y - sp.asls(y, lam=1e8, p=0.002, iterations=15)       # ลบ baseline
+peaks = sp.find_peaks(f, flat, min_snr=6, min_distance=3)    # หาพีค
+fits = sp.fit_peaks(f, flat, peaks)                          # ฟิต line profile
+m = sp.match_lines(fits["center"], pred, tolerance=1.0)      # จับคู่กับเส้นที่ทำนาย
+lin = sp.to_lin(pred, m, err=fits["center_err"][m["observed"]])
+new = pickett.fit(fit.par, lin)                              # ฟิตต่อ
+```
+
+`match_lines` ตัดรายการที่ `ambiguous` ออกให้อัตโนมัติ ส่วนวิธีทำหลายรอบและการใช้ error ขั้นต่ำ ใช้หลักเดียวกับบทที่ 13
+
+### รันหลายงานพร้อมกัน
+
+ระหว่างที่โปรแกรม C ทำงาน `pickett` จะปล่อย GIL ของ Python ดังนั้น thread ของ Python รันงานพร้อมกันได้จริง:
+
+```python
+from concurrent.futures import ThreadPoolExecutor
+with ThreadPoolExecutor(8) as pool:
+    results = list(pool.map(lambda v: pickett.predict(v, "mol.int", threads=1), var_texts))
+
+# หรือใช้ฟังก์ชันสำเร็จรูป
+results = pickett.predict_many([(v, "mol.int") for v in var_texts])
+```
+
+ใส่ `threads=1` เมื่อรันหลายงานพร้อมกัน เพื่อไม่ให้แต่ละงานแย่ง core กันเองตอนคำนวณตาราง partition function
+
+### Notebook ตัวอย่าง
+
+[rust/pickett-py/examples/quickstart.ipynb](rust/pickett-py/examples/quickstart.ipynb) อธิบายเป็นภาษาไทย พร้อมกราฟ ครอบคลุม:
+- ทำนายสเปกตรัม CH₃CN
+- กราฟ Q(T)
+- ฟิตโมเลกุลแบบ SO₂
+- วิเคราะห์สเปกตรัมจำลองตั้งแต่ลบ baseline จนฟิตกลับได้ค่า A ที่ถูกต้อง
+- สแกนค่า A แบบขนาน
+
+เปิดด้วย Jupyter แล้วกด Run All ได้ทันที เพราะ notebook หาโฟลเดอร์ `test\golden` ของ repo ให้เอง ใช้เวลารันราว 15 วินาที
+
+---
+
+<a id="ch15"></a>
+
+## 15. เอกสารอ้างอิง
 
 - [documentation.md](documentation.md): เอกสารสำหรับนักพัฒนา (สถาปัตยกรรม การ build รายละเอียดโค้ด)
 - [spinv.pdf](spinv.pdf): คู่มือต้นฉบับของ SPFIT/SPCAT รวมรหัสพารามิเตอร์และรหัสไดโพลทั้งหมด (ควรเปิดด้วยโปรแกรมอ่าน PDF เพราะข้อความที่ copy ออกมาจะเพี้ยน)

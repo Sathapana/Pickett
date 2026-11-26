@@ -23,9 +23,10 @@ A user manual in Thai, with a step-by-step quick start and troubleshooting, is i
 11. [Rust in-process runner: pickett-sys](#rust-in-process-runner-pickett-sys)
 12. [Rust high-level API: pickett](#rust-high-level-api-pickett)
 13. [Rust spectrum analysis: pickett-spectrum](#rust-spectrum-analysis-pickett-spectrum)
-14. [Legacy, alternate and unused files](#legacy-alternate-and-unused-files)
-15. [Known issues and caveats](#known-issues-and-caveats)
-16. [References](#references)
+14. [Python package: pickett](#python-package-pickett)
+15. [Legacy, alternate and unused files](#legacy-alternate-and-unused-files)
+16. [Known issues and caveats](#known-issues-and-caveats)
+17. [References](#references)
 
 ---
 
@@ -778,6 +779,70 @@ Limits:
 - `fit_peak` fits one line at a time, so blended lines need a wider model, which is not provided.
 - The pseudo-Voigt is an approximation (~1%), which matters for line widths more than for centres.
 - `match_lines` uses only frequencies, not intensities.
+- AsLS with a small `p` follows the lower edge of the noise band, so a baseline-corrected spectrum sits about 2σ above zero. The local baseline in `fit_peak` absorbs this, so line centres are unaffected.
+
+---
+
+## Python package: pickett
+
+[rust/pickett-py](rust/pickett-py) is a Python package built with PyO3 and maturin. Its native module `pickett._native` wraps the `pickett` and `pickett-spectrum` crates. The Python layer (`python/pickett/`) adds classes, pandas tables and file-path handling.
+
+```python
+import pickett
+from pickett import spectrum as sp
+
+fit = pickett.fit("mol.par", "mol.lin")                 # SPFIT; paths or file texts
+print(fit.params_frame(), fit.rms_error)
+pred = pickett.predict(fit.var, "mol.int")              # SPCAT with the fitted .var
+pred.lines["freq"], pred.lines["lgint"]                 # numpy arrays, full precision
+pred.lines_frame()                                      # pandas DataFrame
+pred.partition_at(300.0)
+
+f, y = sp.read("scan.txt")
+flat = y - sp.asls(y, lam=1e8, p=0.002, iterations=15)
+fits = sp.fit_peaks(f, flat, sp.find_peaks(f, flat, min_snr=6, min_distance=3))
+m = sp.match_lines(fits["center"], pred, tolerance=1.0)
+lin = sp.to_lin(pred, m, err=fits["center_err"][m["observed"]])   # -> pickett.fit(par, lin)
+```
+
+| Python | Contents |
+|---|---|
+| `pickett.predict(var, int, flavor="spinv", threads=None)` | `Prediction`: `lines`, `levels` (dicts of numpy arrays, quanta as 2-D int arrays), `partition` (n×2), `catalog`, `report`, `log`, `files`; `partition_at(T)`, `lines_frame()`, `levels_frame()` |
+| `pickett.fit(par, lin, flavor="spinv")` | `FitResult`: `params`, `iterations`, `par`, `var`, `report`, `log`; `rms_error`, `value(label)`, `params_frame()` |
+| `pickett.predict_many(jobs, flavor, threads)` | many `(var, int)` jobs on all cores, results in order |
+| `pickett.PickettError` | raised when a program fails; `.log` has its messages |
+| `pickett.thread_safe()`, `set_threads(n)` | as in `pickett-sys` |
+| `pickett.spectrum` | `read`, `asls`, `savgol`, `noise_level`, `find_peaks`, `fit_peaks`, `match_lines` (drops ambiguous matches by default), `to_lin`, `synthesize`, `catalog_spectrum`, `profile_area` |
+
+Inputs can be file texts or paths: `os.PathLike` objects, or a `str` without a newline that names an existing file. `flavor="dpi"` runs DPCAT/DPFIT.
+
+**Threads.** Every SPCAT/SPFIT run releases the GIL (`Python::detach`), so a `ThreadPoolExecutor` runs predictions in parallel. A test checks that a Python loop keeps running during a prediction, and that 4 threads give identical results.
+
+**Build and install** (Windows, the same 64-bit gcc as `pickett-sys`; MSYS2 `C:\msys64\mingw64\bin` is found automatically):
+
+```sh
+python -m venv .venv && .venv\Scripts\activate     # or use an existing environment
+pip install maturin numpy
+cd rust/pickett-py
+maturin develop --release        # build and install into the active environment
+# or: maturin build --release   -> rust/target/wheels/pickett-0.1.0-cp39-abi3-win_amd64.whl
+```
+
+The extension uses the stable ABI (`abi3`), so one wheel serves Python 3.9 and later. On Windows-GNU it links against Python with pyo3's `generate-import-lib`, so no MSVC tools are needed. It was built and tested with Python 3.12 (64-bit), numpy 2.4.4, pyo3 0.30.1 and maturin 1.16.
+
+**Tests:** `python -m pytest rust/pickett-py/tests` runs 14 tests:
+- the golden catalogs, reproduced exactly;
+- the golden fit parameters;
+- path and text input;
+- `partition_at`;
+- `PickettError` and its log;
+- pandas tables;
+- parallel threads, and that the GIL is released;
+- `predict_many` order;
+- the spectrum tools;
+- a closed loop in Python: simulated spectrum, assignment passes and SPFIT, which recovers A from the perturbed start.
+
+**Notebook:** [rust/pickett-py/examples/quickstart.ipynb](rust/pickett-py/examples/quickstart.ipynb) walks through the whole workflow with plots: prediction, Q(T), fit, spectrum analysis and assignment, and a parallel parameter scan. It is stored without outputs. Executed with nbclient, it runs without errors in about 15 s.
 
 ---
 

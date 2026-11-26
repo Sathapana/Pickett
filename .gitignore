@@ -20,3 +20,9 @@
 /pkselftest_dp
 # Rust build output
 /rust/target/
+# Python build output
+*.pyd
+*.so
+__pycache__/
+*.egg-info/
+.venv/
