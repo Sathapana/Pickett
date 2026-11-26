@@ -1,1 +1,18 @@
 *.o
+*.a
+*.exe
+# built executables
+/spfit
+/spcat
+/dpfit
+/dpcat
+/calmrg
+/calbak
+/iamcalc
+/moiam
+/stark
+/termval
+/sortn
+/reassign
+/sortegy
+/iambak
