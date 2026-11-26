@@ -3,6 +3,14 @@
 version = 4
 
 [[package]]
+name = "pickett"
+version = "0.1.0"
+dependencies = [
+ "pickett-io",
+ "pickett-sys",
+]
+
+[[package]]
 name = "pickett-io"
 version = "0.1.0"
 

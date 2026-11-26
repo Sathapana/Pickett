@@ -21,9 +21,10 @@ A user manual in Thai, with a step-by-step quick start and troubleshooting, is i
 9. [Auxiliary programs](#auxiliary-programs)
 10. [Rust file library: pickett-io](#rust-file-library-pickett-io)
 11. [Rust in-process runner: pickett-sys](#rust-in-process-runner-pickett-sys)
-12. [Legacy, alternate and unused files](#legacy-alternate-and-unused-files)
-13. [Known issues and caveats](#known-issues-and-caveats)
-14. [References](#references)
+12. [Rust high-level API: pickett](#rust-high-level-api-pickett)
+13. [Legacy, alternate and unused files](#legacy-alternate-and-unused-files)
+14. [Known issues and caveats](#known-issues-and-caveats)
+15. [References](#references)
 
 ---
 
@@ -75,7 +76,8 @@ e2a6f56 First commit based on HSPM's code from 2008
 |---|---|
 | [ulib.c](ulib.c) | Generic utilities: diagonaliser (`hdiag`, `triag`), eigenvector ordering (`ordblk`), `.par`/`.var` I/O (`getpar`, `getvar`, `putvar`), `.lin` reading (`getlin`), BCD parameter-ID handling, error propagation (`calerr`) |
 | [cnjj.c](cnjj.c), [cnjj.h](cnjj.h) | 3j, 6j and 9j angular-momentum coupling coefficients (log-factorial tables) |
-| [slibgcc.c](slibgcc.c), [slib.h](slib.h) | System-dependent code: command-line/interactive file-name handling (`filget`), `fopenq`, memory sizing, time stamps |
+| [slibgcc.c](slibgcc.c), [slib.h](slib.h) | System-dependent code: command-line/interactive file-name handling (`filget`), `fopenq`, memory sizing, time stamps. Also the library run control: `pk_fail`, memory files, message capture, result callbacks |
+| [pktmp.c](pktmp.c) | `pk_tmpfile()`, a `tmpfile()` that works for ordinary users on Windows |
 | [catutil.c](catutil.c), [catutil.h](catutil.h) | Quantum-number parsing (`readqn`), `pcard` free-format numeric parsing, catalog-format helpers |
 | [lsqfit.c](lsqfit.c), [lsqfit.h](lsqfit.h) | Least-squares kernel (Givens rotations, Marquardt step, rank-deficient handling) |
 | [dblas.c](dblas.c), [cblas.h](cblas.h) | Small bundled subset of CBLAS (`cblas_ddot`, `daxpy`, `drot`, …). It can be replaced by ATLAS or a system BLAS. |
@@ -153,10 +155,44 @@ State that would leak from one run into the next is reset at the start of each S
 
 SPFIT's `lbufof()` already resets itself. `python test/run_golden.py --inprocess` checks this (see [Regression tests](#regression-tests)).
 
+#### Memory files, messages and result callbacks
+
+A host can run the programs without files or console output. Everything is set up with these functions, also in `pickett.h`, and it works by intercepting I/O at three points, so the calculation code itself is unchanged.
+
+| Function | Purpose |
+|---|---|
+| `pk_vfs_begin()` / `pk_vfs_end()` | Turn memory files on/off (`end` frees them) |
+| `pk_vfs_put(name, data, len)` | Provide an input, for example `"mol.int"` |
+| `pk_vfs_get(name, &data, &len)`, `pk_vfs_count()`, `pk_vfs_name(k)` | Read the outputs after the run |
+| `pk_log_mode(PK_LOG_STDOUT / PK_LOG_CAPTURE / PK_LOG_DISCARD)`, `pk_log_text(&len)` | Where the program's messages go |
+| `pk_set_sink(&sink)` | Register `PK_SINK` callbacks for full-precision results |
+
+How each piece works:
+
+1. **Memory files.** `fopenq()` and the catalog sort (`sortsub.c`) open files through `pk_fopen()`.
+   - While memory files are on, a read gives a temporary stream filled with the named buffer.
+   - A write goes to a temporary stream whose contents become the buffer when it is closed.
+   - So `filbak()` (`.par` → `.bak`), the `.bak` read and the in-place `.cat` sort all work unchanged.
+   - Parameter-label files (`*.nam`) that were not put are still read from disk.
+2. **Messages.** `calpgm.h` maps `stdout`, `printf` and `puts` to `pk_stdout()` / `pk_puts()`. By default they still print on stdout.
+3. **Callbacks.** Each is called where the program writes the corresponding line:
+
+| Callback | Called for |
+|---|---|
+| `cat_line` | Every catalog line: frequency, error, log intensity, S·μ², E_low, g_up, tag, QNFMT, both states' quanta. Calculation order; the `.cat` file is sorted afterwards |
+| `level` | Every energy level, whether or not `.egy` is written |
+| `partition` | Each row of the Q(T) table |
+| `fit_iteration` | The statistics at the end of each SPFIT iteration |
+| `fit_param` | Each parameter as written to `.par`/`.var`, with the fitted and the `.par` error |
+
+The values are full `double`s, not the rounded file fields. For example, `.cat` keeps only 4 decimals of the frequency.
+
+**`pk_tmpfile()` ([pktmp.c](pktmp.c)).** On Windows, the C runtime's `tmpfile()` creates its file in the root of the current drive (`C:\`), which ordinary users usually cannot write to, so it returns NULL. This affected the original programs too: the `.cat` sort of large catalogs, the `ibufof()` disk buffer and SPFIT's line buffer all use `tmpfile()`. `calpgm.h` now maps `tmpfile()` to `pk_tmpfile()`, which uses the user's temporary folder (`GetTempPath`) and deletes the file when it is closed. On other systems it is `tmpfile()`.
+
 Limits of this layer, to be removed in later phases:
 - **Not thread-safe.** The code keeps state in static variables, so only one run can be active in a process at a time.
 - **Memory leaks on failure.** If a run fails in the middle of a calculation, the memory it allocated is not freed.
-- **Files and stdout only.** Input and output still go through files, and progress is printed on stdout.
+- **Results are partly text.** The calculation still formats its output files internally; memory files only redirect them. The callbacks cover catalog lines, levels, Q(T) and fitted parameters. Per-line fit residuals (obs−calc, including blends) are only in the `.fit` text so far.
 
 ### Data flow
 
@@ -523,8 +559,9 @@ let cat = pickett_io::CatFile::parse(&std::fs::read_to_string("data/mol.cat")?)?
 |---|---|
 | `run(program, args)` | Same arguments as the command line, e.g. `["mol"]` |
 | `run_in(program, dir, base)` | Passes every `<dir>/<base>.<ext>` explicitly, so directory names with dots are safe |
-| `RunError::Failed { program, status }` | A fatal error in the C code. The process keeps running, and the message is on stdout |
-| `ffi` | The raw `extern "C"` functions |
+| `run_memory(program, base, inputs)` | No files and no console output. Returns `MemoryRun`: `status`, `files` (every memory file after the run), `log` (the captured messages) and `records` (full-precision `cat_lines`, `levels`, `partition`, `fit_iterations`, `fit_params`) |
+| `RunError::Failed { program, status }` | A fatal error in the C code. The process keeps running. The message is on stdout, or in `MemoryRun::log` |
+| `ffi` | The raw `extern "C"` functions, including `PkSink` |
 
 **How it builds.** `build.rs` has no dependencies. It calls gcc and `ar` directly and puts both variants into one `libpickett.a`:
 - The SPCAT/SPFIT objects get run functions `pk_spcat_run` / `pk_spfit_run`.
@@ -547,6 +584,49 @@ This was tested with gcc 16.2 (MSYS2) and Rust 1.100 on Windows 11. Linking work
 - Three threads run at once.
 - A directory name with dots works.
 - Deliberately corrupted expected files make the test fail, so the comparison is known to work.
+- `tests/memory.rs` covers `run_memory`:
+  - every golden case in memory gives the expected `.cat`/`.egy`/`.par`/`.var`;
+  - no file appears in the working directory;
+  - every `cat_line` record matches a `.cat` line once rounded;
+  - `level` and `partition` records match `.egy` and the `.out` table, all 1000 rows;
+  - `fit_param` records match `.var` to 2e-15, and `fit_iteration` matches the iterations printed in `.fit`;
+  - a failure's message ends up in `log`.
+
+---
+
+## Rust high-level API: pickett
+
+[rust/pickett](rust/pickett) is the API meant for applications. It takes and returns `pickett-io` types, and runs everything in memory through `pickett-sys`.
+
+```rust
+use pickett::{fit, predict, Flavor, IntFile, LinFile, ParFile};
+
+let result = fit(Flavor::Spinv, &par, &lin)?;        // SPFIT
+println!("RMS {:?}", result.rms_error());
+let spectrum = predict(Flavor::Spinv, &result.var, &int)?;  // SPCAT with the fitted .var
+let q300 = spectrum.partition_at(300.0);
+```
+
+| Item | Contents |
+|---|---|
+| `predict(flavor, &var, &int)`, `predict_text(flavor, var, int)` | `Prediction`: `lines` (full precision, sorted by frequency), `levels`, `partition`, `catalog` (the `.cat` as written), `report` (`.out`), `log`, `files`. `partition_at(T)` interpolates ln Q in ln T between table points |
+| `fit(flavor, &par, &lin)`, `fit_text(flavor, par, lin)` | `FitResult`: `params` (full precision), `iterations`, `par` and `var` (as `ParFile`, ready for the next fit or `predict`), `report` (`.fit`), `log`, `files`. `rms_error()` |
+| `Error` | `Run` (with the program's `log`), `NoOutput` (e.g. SPFIT did no iteration), `Parse`, `BadArgument` |
+
+`Flavor::Spinv` runs SPCAT/SPFIT and `Flavor::Dpi` runs DPCAT/DPFIT.
+
+**Tests** (`cargo test -p pickett`):
+- `predict_text` gives exactly the golden `.cat` for all three SPCAT/DPCAT cases.
+- `fit` reproduces the golden parameters within 1e-6 relative for the three SPFIT/DPFIT cases.
+- The `partition_at` interpolation and its out-of-range behaviour.
+- Typed and text input give the same result.
+- An error carries the program's message, and the next call works.
+- Fit followed by predict: starting from perturbed constants and 50 lines with ±0.02 MHz noise, the fitted constants reproduce the reference SO₂-like catalog line for line, within 0.5 MHz.
+
+```sh
+cargo run -p pickett --example fit_predict -- ../test/golden/spfit_asym/input/asym.par \
+    ../test/golden/spfit_asym/input/asym.lin ../test/golden/spcat_asym/input/asym.int
+```
 
 ---
 
@@ -584,6 +664,7 @@ These were present in the 2008/2020 code and have been fixed:
 | `ifndef ($(BLASLIB))` always linked the bundled BLAS | Replaced it with `ifeq ($(strip $(BLASLIB)),)` |
 | `calmrg.c` defined its own `unlink()`, which clashes with the C library on MinGW/Windows | Renamed it to `exptunlink()` (file-local) |
 | Pre-built `splib.a` was committed, and `.gitignore` only covered `*.o` | Stopped tracking `splib.a`; `.gitignore` now covers `*.a`, `*.exe` and the built programs; added `make clean` |
+| On Windows, `tmpfile()` (used for large-catalog sorting and scratch buffers) writes to the drive root and fails for ordinary users | `pk_tmpfile()` in [pktmp.c](pktmp.c), using the user's temporary folder |
 
 ---
 

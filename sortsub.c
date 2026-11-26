@@ -23,7 +23,7 @@ BOOL dokey;
   char *buf0, *buf, **pbuf;
   int nline, k, kk, mxline, nn, ntot;
   BOOL init, scrflg;
-  finp = fopen(inpname, "r");
+  finp = pk_fopen(inpname, "r");
   if (finp == NULL) {
     puts("no input file");
     return 1;
@@ -80,7 +80,7 @@ BOOL dokey;
       if (fscr != NULL) {
         fclose(fscr); fscr = fout;
       }
-      fout = fopen(outname, "w");
+      fout = pk_fopen(outname, "w");
     } else if (fout != NULL) {  /* MXLINE lines read without EOF after first pass */
       rewind(fscr);
       ftmp = fscr;

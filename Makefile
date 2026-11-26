@@ -44,7 +44,7 @@ reassign: reassign.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm
 sortegy: sortegy.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm
 sortn: sortn.o sortsub.o splib.a; $(CC) -o $@ $^
 
-splib.a: ulib.o cnjj.o slibgcc.o catutil.o lsqfit.o $(LBLAS)
+splib.a: ulib.o cnjj.o slibgcc.o pktmp.o catutil.o lsqfit.o $(LBLAS)
 	ar r splib.a $^
 	ranlib splib.a
 
@@ -68,6 +68,7 @@ readopt.o:readopt.c readopt.h catutil.h
 ulib.o:ulib.c $(HDR)
 cnjj.o:cnjj.c cnjj.h
 slibgcc.o:slibgcc.c slib.h pickett.h
+pktmp.o:pktmp.c
 spinv.o:spinv.c $(HDR) spinit.h
 spinit.o:spinit.c $(HDR) spinit.h
 dpi.o:dpi.c $(HDR)

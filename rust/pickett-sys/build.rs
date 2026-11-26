@@ -8,7 +8,7 @@
 //! * DPCAT/DPFIT: the same drivers + dpi.c, with every global symbol of those
 //!   files prefixed `dp_` and the run functions named `pk_dpcat_run` /
 //!   `pk_dpfit_run`;
-//! * shared: ulib.c, cnjj.c, slibgcc.c, catutil.c, lsqfit.c, dblas.c, sortsub.c.
+//! * shared: ulib.c, cnjj.c, slibgcc.c, pktmp.c, catutil.c, lsqfit.c, dblas.c, sortsub.c.
 //!
 //! Compiler choice: `PICKETT_CC`, then `CC`, then (on Windows)
 //! `C:\msys64\mingw64\bin\gcc.exe`, then `gcc`. The first one whose
@@ -18,7 +18,7 @@ use std::env;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-const COMMON: &[&str] = &["ulib", "cnjj", "slibgcc", "catutil", "lsqfit", "dblas", "sortsub"];
+const COMMON: &[&str] = &["ulib", "cnjj", "slibgcc", "pktmp", "catutil", "lsqfit", "dblas", "sortsub"];
 const DRIVERS: &[&str] = &["calcat", "calfit", "subfit"];
 const SPINV: &[&str] = &["spinv", "spinit"];
 const DPI: &[&str] = &["dpi"];

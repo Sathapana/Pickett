@@ -19,3 +19,8 @@ void brkqr(int);
 void pk_set_jump(/*@null@*/ jmp_buf *jb);
 int  pk_fclose(FILE *f);
 void pk_close_all(void);
+FILE *pk_fopen(const char *name, const char *mode); /* memory files aware */
+FILE *pk_stdout(void);            /* where program messages go */
+FILE *pk_tmpfile(void);           /* tmpfile() that works on Windows (pktmp.c) */
+int  pk_puts(const char *s);
+/*@null@*/ const PK_SINK *pk_get_sink(void);

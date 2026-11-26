@@ -104,12 +104,10 @@ fn parse_level(line: &str) -> Option<EgyLevel> {
         ktsp = Some(k.trim().parse().ok()?);
         tail = after;
     }
-    if !tail.is_ascii() || tail.len() % 3 != 0 {
+    if !tail.is_ascii() {
         return None;
     }
-    let qn = (0..tail.len() / 3)
-        .map(|i| tail[3 * i..3 * i + 3].trim().parse::<i32>().ok())
-        .collect::<Option<Vec<i32>>>()?;
+    let qn = parse_quanta(tail)?;
     Some(EgyLevel {
         block: f[0].parse().ok()?,
         index: f[1].parse().ok()?,
@@ -122,9 +120,61 @@ fn parse_level(line: &str) -> Option<EgyLevel> {
     })
 }
 
+/// The quanta after the colon, written with `%3d` each. Fixed 3-column
+/// fields are used when every field is a clean right-aligned integer; a
+/// value of 4+ characters (`-100`) breaks the columns, as in `"100-100"`,
+/// and then the text is split at number boundaries like `scanf("%d")`.
+fn parse_quanta(tail: &str) -> Option<Vec<i32>> {
+    if tail.len() % 3 == 0 {
+        let fixed: Option<Vec<i32>> = (0..tail.len() / 3)
+            .map(|i| {
+                let f = &tail[3 * i..3 * i + 3];
+                let t = f.trim_start();
+                (!t.is_empty() && !t.contains(' ')).then(|| t.parse::<i32>().ok()).flatten()
+            })
+            .collect();
+        if fixed.is_some() {
+            return fixed;
+        }
+    }
+    let b = tail.as_bytes();
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b' ' {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        if b[i] == b'-' {
+            i += 1;
+        }
+        let digits = i;
+        while i < b.len() && b[i].is_ascii_digit() {
+            i += 1;
+        }
+        if i == digits {
+            return None; // not a number
+        }
+        out.push(tail[start..i].parse().ok()?);
+    }
+    Some(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn quanta_wider_than_three_columns() {
+        let t = "   404   50      39662.146819          0.000000   1.000000  201:100-100\n";
+        let f = EgyFile::parse(t).unwrap();
+        assert_eq!(f.levels().next().unwrap().qn, vec![100, -100]);
+        assert_eq!(f.to_text(), t);
+        assert_eq!(parse_quanta("100100"), Some(vec![100, 100]));
+        assert_eq!(parse_quanta("  1 -1 12"), Some(vec![1, -1, 12]));
+        assert_eq!(parse_quanta(" x "), None);
+    }
 
     #[test]
     fn parses_and_round_trips() {

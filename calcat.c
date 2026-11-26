@@ -105,6 +105,7 @@ static int calcat_body(int argc, char *argv[])
   int nsav, jxdp, itmp, jnxt, i, j, k, inblk, nbkpj, npdip, ntemp, ij, jj, jx;
   int iqnfmt, idf, itd, nqn, npar, isiz, jsiz, nsize_p, maxqn, ktsp, ibcd, ndbcd;
   int jmax, nfmt, iposv, iv, newfmt, globfmt, isneg, catqn, maxv;
+  const PK_SINK *sink; /* result callbacks (pickett.h), or NULL */
   BOOL prir, prder, prfrq, preig, pregy, prstr, diag, first, ifdump;
   unsigned int ndel, maxdm;
   short iqni[MAXQN + MAXQNX];
@@ -169,6 +170,7 @@ static int calcat_body(int argc, char *argv[])
     qsum[i] = 0.; /* static: reset for repeated runs in one process */
   }
   ibufof_reset();
+  sink = pk_get_sink();
   for (k = NTEMP - 2; k >= 0; --k) {
     if (fabs(tmq - temp[k]) < 0.01) {
       --ntemp;
@@ -541,6 +543,9 @@ static int calcat_body(int argc, char *argv[])
           break;
         qsum[k] += dgn * exp(tmp);
       }
+      if (sink != NULL && sink->level != NULL)
+        sink->level(sink->user, iblk, i + 1, egx, err, pmix[i], idgn,
+                    (globfmt != 0) ? ktsp : -1, maxqn, iqni);
       if (prfrq) {
         fprintf(luout, "%6d %4d %17.6f %17.6f %10.6f",
                 iblk, i + 1, egx, err, pmix[i]);
@@ -721,6 +726,11 @@ static int calcat_body(int argc, char *argv[])
                     elow, igup, itag, iqnfmt, sqn);
           }
           ++nline;
+          if (sink != NULL && sink->cat_line != NULL)
+            sink->cat_line(sink->user, frq, err, strlg, strr, itd, elow,
+                           igup, itag, iqnfmt, nqn,
+                           (isneg != 0) ? &iqni[MAXQN] : iqni,
+                           (isneg != 0) ? iqni : &iqni[MAXQN]);
           gupfmt(igup, sgup); sgup[3] = '\0';
           if (prir) {
             fprintf(lucat, "%13.6f%8.6f%8.4f%2d%10.4f%s%7ld%4d",
@@ -760,6 +770,8 @@ static int calcat_body(int argc, char *argv[])
       qlog = log10(qsum[i]);
     printf(       " %10.3f %14.4f %9.4f\n", temp[i], qsum[i], qlog);
     fprintf(luout," %10.3f %14.4f %9.4f\n", temp[i], qsum[i], qlog);
+    if (sink != NULL && sink->partition != NULL)
+      sink->partition(sink->user, temp[i], qsum[i]);
   }
   if (pregy)
     fclose(luegy);

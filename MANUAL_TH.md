@@ -19,7 +19,8 @@
 9. [อภิธานศัพท์ ไทย–อังกฤษ](#ch9)
 10. [อ่านและเขียนไฟล์ด้วย Rust (`pickett-io`)](#ch10)
 11. [รัน SPCAT/SPFIT จาก Rust (`pickett-sys`)](#ch11)
-12. [เอกสารอ้างอิง](#ch12)
+12. [ทำนายและฟิตในหน่วยความจำ (`pickett`)](#ch12)
+13. [เอกสารอ้างอิง](#ch13)
 
 ---
 
@@ -760,14 +761,110 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 ### ข้อควรรู้
 
 - **รันได้ทีละครั้ง:** โค้ด C เก็บสถานะไว้ในตัวแปร static จึงรันพร้อมกันหลายงานไม่ได้ ถ้าเรียกจากหลาย thread library จะให้รอคิวกันเอง ผลจึงยังถูกต้อง แต่ไม่ได้เร็วขึ้น (การรันขนานอยู่ในแผน Phase 4)
-- **ยังใช้ไฟล์:** ข้อมูลเข้าและผลลัพธ์ยังเป็นไฟล์ เหมือนการรันโปรแกรมปกติ ใช้ `pickett-io` อ่านผล ส่วน API ที่รับส่งข้อมูลในหน่วยความจำโดยตรงอยู่ในแผน Phase 3
-- **เมื่อเกิด error:** จะได้ `RunError::Failed { program, status }` ส่วนข้อความอธิบาย error ยังพิมพ์ออกหน้าจอ ถ้า error เกิดกลางการคำนวณ หน่วยความจำที่จองไว้จะไม่ถูกคืน จึงไม่ควรปล่อยให้ error ซ้ำ ๆ หลายพันครั้งในโปรแกรมที่รันยาว
+- **ไฟล์หรือหน่วยความจำ:** `run_in` อ่านและเขียนไฟล์จริงเหมือนการรันโปรแกรมปกติ ส่วน `run_memory` รับข้อมูลเข้าเป็น buffer และคืนผลเป็น buffer โดยไม่สร้างไฟล์และไม่พิมพ์อะไรออกหน้าจอ ถ้าต้องการผลแบบมีชนิดข้อมูลชัดเจน ใช้ `pickett` ใน[บทที่ 12](#ch12) จะสะดวกกว่า
+- **เมื่อเกิด error:** จะได้ `RunError::Failed { program, status }` ข้อความอธิบาย error จะพิมพ์ออกหน้าจอเมื่อใช้ `run_in` หรืออยู่ใน `log` เมื่อใช้ `run_memory` ถ้า error เกิดกลางการคำนวณ หน่วยความจำที่จองไว้จะไม่ถูกคืน จึงไม่ควรปล่อยให้ error ซ้ำ ๆ หลายพันครั้งในโปรแกรมที่รันยาว
 
 ---
 
 <a id="ch12"></a>
 
-## 12. เอกสารอ้างอิง
+## 12. ทำนายและฟิตในหน่วยความจำ (`pickett`)
+
+`pickett` อยู่ในโฟลเดอร์ [rust/pickett](rust/pickett) เป็น API ระดับสูงที่แนะนำให้ใช้เขียนโปรแกรม มีสองฟังก์ชันหลัก:
+
+| ฟังก์ชัน | โปรแกรมที่รัน | รับเข้า | ได้ผลกลับมา |
+|---|---|---|---|
+| `predict(flavor, &var, &int)` | SPCAT / DPCAT | `ParFile` + `IntFile` | `Prediction`: เส้นสเปกตรัม, ระดับพลังงาน, partition function, แคตตาล็อก `.cat` และรายงาน `.out` |
+| `fit(flavor, &par, &lin)` | SPFIT / DPFIT | `ParFile` + `LinFile` | `FitResult`: พารามิเตอร์ที่ฟิตแล้ว, สถิติทุกรอบ, `.par`/`.var` ใหม่ และรายงาน `.fit` |
+
+ทุกอย่างทำงานในหน่วยความจำ ไม่สร้างไฟล์ และไม่พิมพ์อะไรออกหน้าจอ ข้อความของโปรแกรมเก็บไว้ใน `log` ส่วน `flavor` ใช้ `Flavor::Spinv` สำหรับ SPCAT/SPFIT และ `Flavor::Dpi` สำหรับ DPCAT/DPFIT
+
+### ความละเอียดของตัวเลข
+
+ค่าใน `Prediction::lines`, `levels` และ `FitResult::params` เป็นค่าเต็มจากการคำนวณ ไม่ได้ถูกปัดตามรูปแบบไฟล์ เช่น ไฟล์ `.cat` เก็บความถี่แค่ 4 ตำแหน่งทศนิยม แต่ `lines[i].freq` มีความละเอียดเต็ม `f64` ส่วนไฟล์ที่โปรแกรมเขียนตามปกติยังมีให้ใน `catalog`, `report` และ `files`
+
+### ลองรันตัวอย่าง
+
+ตัวอย่าง `fit_predict` ฟิตโมเลกุลตัวอย่างแบบ asymmetric top แล้วทำนายสเปกตรัมจากค่าที่ฟิตได้:
+
+```sh
+cd rust
+cargo run -p pickett --example fit_predict -- ../test/golden/spfit_asym/input/asym.par ../test/golden/spfit_asym/input/asym.lin ../test/golden/spcat_asym/input/asym.int
+```
+
+ผลที่ได้ (ตัดมาบางส่วน):
+
+```
+fit: 3 iterations, weighted RMS 0.24544
+     10000       60778.549156413916 ± 3.536e-3  A
+     20000       10318.069768418960 ± 1.216e-3  B
+     ...
+prediction: 198 lines, 221 levels
+  Q(300 K) = 2630.7031
+     358215.678836 ± 0.030415 MHz  log I -2.4524  [20, 0, 20] <- [19, 1, 19]
+```
+
+### เขียนโปรแกรมเอง
+
+เพิ่มใน `Cargo.toml` (แก้ path ให้ชี้ไปที่ repo นี้):
+
+```toml
+[dependencies]
+pickett = { path = "../Pickett/rust/pickett" }
+```
+
+ตัวอย่างนี้ฟิตแล้วนำค่าที่ฟิตได้ไปทำนายสเปกตรัมต่อทันที:
+
+```rust
+use pickett::{fit, predict, Flavor, IntFile, LinFile, ParFile};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let par = ParFile::parse(&std::fs::read_to_string("mol.par")?, Flavor::Spinv)?;
+    let lin = LinFile::parse(&std::fs::read_to_string("mol.lin")?)?;
+    let int = IntFile::parse(&std::fs::read_to_string("mol.int")?)?;
+
+    let result = fit(Flavor::Spinv, &par, &lin)?;       // ฟิต
+    println!("RMS = {:?}", result.rms_error());
+    for p in &result.params {
+        println!("{:>8} {:.10} ± {:.2e} {}", p.id, p.value, p.err_fit, p.label);
+    }
+
+    let spectrum = predict(Flavor::Spinv, &result.var, &int)?;   // ทำนายด้วยค่าที่ฟิตได้
+    println!("Q(300 K) = {:?}", spectrum.partition_at(300.0));
+    for l in spectrum.lines.iter().filter(|l| l.lgint > -4.0) {
+        println!("{:.6} MHz  {:?} <- {:?}", l.freq, l.upper, l.lower);
+    }
+
+    // ถ้าต้องการเก็บผลเป็นไฟล์ ก็เขียนออกเองได้
+    std::fs::write("mol_fitted.var", result.var.to_text())?;
+    Ok(())
+}
+```
+
+### เมื่อเกิด error
+
+| Error | ความหมาย |
+|---|---|
+| `Error::Run { log, .. }` | โปรแกรม C หยุดเพราะ error ข้อความอธิบายอยู่ใน `log` เช่น `Error reading .VAR file` |
+| `Error::NoOutput` | โปรแกรมทำงานจบแต่ไม่ได้เขียนผล เช่น SPFIT ไม่ได้ฟิตเลยแม้แต่รอบเดียว |
+| `Error::Parse` | อ่านไฟล์ผลลัพธ์ไม่ได้ |
+
+หลังเกิด error แล้วยังเรียกฟังก์ชันอื่นต่อได้ตามปกติ
+
+### `partition_at(T)`
+
+`partition_at(T)` คืนค่า Q ที่อุณหภูมิ T:
+- ถ้า T เป็นจุดในตาราง (1–1000 K ทีละ 1 K) จะได้ค่าตามตารางพอดี
+- ถ้า T อยู่ระหว่างสองจุด จะ interpolate ln Q แบบเส้นตรงเทียบกับ ln T
+- ถ้า T อยู่นอกช่วงตาราง จะได้ `None`
+
+ข้อควรระวังเรื่องความครบของระดับพลังงานที่อุณหภูมิสูงยังใช้เหมือนใน[บทที่ 6](#ch6)
+
+---
+
+<a id="ch13"></a>
+
+## 13. เอกสารอ้างอิง
 
 - [documentation.md](documentation.md): เอกสารสำหรับนักพัฒนา (สถาปัตยกรรม การ build รายละเอียดโค้ด)
 - [spinv.pdf](spinv.pdf): คู่มือต้นฉบับของ SPFIT/SPCAT รวมรหัสพารามิเตอร์และรหัสไดโพลทั้งหมด (ควรเปิดด้วยโปรแกรมอ่าน PDF เพราะข้อความที่ copy ออกมาจะเพี้ยน)

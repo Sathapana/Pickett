@@ -74,6 +74,7 @@ static int calfit_body(int argc, char *argv[])
   /*@owned@*/ double *fitbgn, *var, *oldfit, *fit, *teig, *pmix;
   /*@owned@*/ int *iperm;
   /*@owned@*/ char *parlbl;
+  const PK_SINK *sink; /* result callbacks (pickett.h), or NULL */
   FILE *lupar, *lulin, *lufit, *lubak, *luvar;
   double *egy, *egyder;
   double *pvar, *pfit, *pfitb, *pfitd;
@@ -102,6 +103,7 @@ static int calfit_body(int argc, char *argv[])
 
   /*     open read and write files */
 
+  sink = pk_get_sink();
   filget(argc, argv, NFILE, fname, ext);
   filbak(fname[epar], fname[ebak]);
   lubak = fopenq(fname[ebak], "r");
@@ -668,6 +670,9 @@ static int calfit_body(int argc, char *argv[])
                   itr, xsqt, xsqbest);
     fprintf(lufit," END OF ITERATION %2d OLD, NEW RMS ERROR=%15.5f %15.5f\n",
                   itr, xsqt, xsqbest);
+    if (sink != NULL && sink->fit_iteration != NULL)
+      sink->fit_iteration(sink->user, itr, xsqt, xsqbest, xsqmw, xsqir,
+                          avgmw, avgir, nf, nrj);
     fflush(stdout);
   } while (itr < nitr && 0.999999 * xsqt > xsqbest);
 
@@ -734,6 +739,12 @@ static int calfit_body(int argc, char *argv[])
     putbcd(pare, 64, &idpar[ibcd]);
     fprintf(lupar, "%s %23.15E %14.8E %s\n", pare, par[i], erp[i], card);
     fprintf(luvar, "%s %23.15E %14.8E %s\n", pare, par[i], erpar[i], card);
+    if (sink != NULL && sink->fit_param != NULL) {
+      const char *pid = pare; /* k is in use: it is the fgetstr status */
+      while (*pid == ' ') ++pid;
+      sink->fit_param(sink->user, i, pid, par[i], erpar[i], erp[i],
+                      (card[0] == '/') ? &card[1] : "");
+    }
     tlbl += LBLEN;
   }
   while (k > 0) {               /* copy correlation lines or extra parameter lines */
