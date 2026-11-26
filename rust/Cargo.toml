@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["pickett-io", "pickett-sys", "pickett"]
+members = ["pickett-io", "pickett-sys", "pickett", "pickett-spectrum"]
 
 [workspace.package]
 edition = "2021"

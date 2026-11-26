@@ -1,0 +1,12 @@
+[package]
+name = "pickett-spectrum"
+version = "0.1.0"
+edition.workspace = true
+description = "Experimental spectrum analysis: smoothing, baseline, peak finding, line-shape fitting, assignment to SPCAT predictions"
+publish = false
+
+[dependencies]
+pickett-io = { path = "../pickett-io" }
+
+[dev-dependencies]
+pickett = { path = "../pickett" }

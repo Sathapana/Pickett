@@ -15,6 +15,14 @@ name = "pickett-io"
 version = "0.1.0"
 
 [[package]]
+name = "pickett-spectrum"
+version = "0.1.0"
+dependencies = [
+ "pickett",
+ "pickett-io",
+]
+
+[[package]]
 name = "pickett-sys"
 version = "0.1.0"
 dependencies = [

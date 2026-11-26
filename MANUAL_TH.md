@@ -20,7 +20,8 @@
 10. [อ่านและเขียนไฟล์ด้วย Rust (`pickett-io`)](#ch10)
 11. [รัน SPCAT/SPFIT จาก Rust (`pickett-sys`)](#ch11)
 12. [ทำนายและฟิตในหน่วยความจำ (`pickett`)](#ch12)
-13. [เอกสารอ้างอิง](#ch13)
+13. [วิเคราะห์สเปกตรัมจากการทดลอง (`pickett-spectrum`)](#ch13)
+14. [เอกสารอ้างอิง](#ch14)
 
 ---
 
@@ -916,7 +917,82 @@ cargo run --release -p pickett --example bench -- ../test/golden/spcat_prolate/i
 
 <a id="ch13"></a>
 
-## 13. เอกสารอ้างอิง
+## 13. วิเคราะห์สเปกตรัมจากการทดลอง (`pickett-spectrum`)
+
+`pickett-spectrum` อยู่ในโฟลเดอร์ [rust/pickett-spectrum](rust/pickett-spectrum) ใช้แปลงสเปกตรัมที่วัดได้ให้เป็นไฟล์ `.lin` สำหรับ SPFIT ขั้นตอนมีดังนี้:
+
+```mermaid
+flowchart LR
+    A["อ่านไฟล์สเปกตรัม"] --> B["ลบ baseline<br/>(AsLS)"]
+    B --> C["หาพีค<br/>(SNR, prominence)"]
+    C --> D["ฟิต line profile<br/>ได้ความถี่ ± error"]
+    D --> E["จับคู่กับเส้นที่ SPCAT ทำนาย"]
+    E --> F[".lin"]
+    F --> G["SPFIT"]
+    G -- "ค่าคงที่ดีขึ้น: ทำนายใหม่" --> E
+```
+
+### เครื่องมือแต่ละตัว
+
+| เครื่องมือ | ใช้ทำอะไร |
+|---|---|
+| `Spectrum::parse` | อ่านไฟล์ข้อความสองคอลัมน์ (ความถี่, ความเข้ม) คั่นด้วยช่องว่าง แท็บ จุลภาค หรือ `;` ก็ได้ ข้ามบรรทัดหัวตารางและบรรทัดที่ขึ้นต้นด้วย `#` หรือ `%` |
+| `smooth::savitzky_golay` | ลด noise โดยรักษาตำแหน่งและความสูงของเส้นไว้ดีกว่าการเฉลี่ยธรรมดา |
+| `baseline::asls` | ประมาณ baseline ที่โค้งหรือเป็นคลื่น โดยไม่ถูกเส้นสเปกตรัมดึงขึ้น ค่า `lambda` ยิ่งมาก baseline ยิ่งเรียบ ค่าที่ใช้บ่อยคือ 10⁴–10⁹ |
+| `peaks::find_peaks` | หาพีคที่สูงกว่า noise ตามเกณฑ์ SNR โดยประมาณระดับ noise ให้อัตโนมัติ |
+| `fit::fit_peak` | ฟิตรูปเส้นแบบ Gaussian, Lorentzian หรือ Voigt พร้อม baseline ช่วงสั้น ได้ความถี่กลางพร้อม error |
+| `assign::match_lines` | จับคู่ความถี่ที่วัดได้กับเส้นที่ทำนาย โดยจับคู่ที่ใกล้ที่สุดก่อน และใช้เส้นละครั้งเดียว ถ้ามีเส้นทำนายอื่นอยู่ในช่วง tolerance ด้วย จะตั้ง `ambiguous` ให้ |
+| `assign::to_lin` | เขียนผลการจับคู่เป็นไฟล์ `.lin` โดยใช้ quantum number ของเส้นที่ทำนาย |
+| `synth` | สร้างสเปกตรัมจำลองจากแคตตาล็อก |
+
+### ลองรันตัวอย่าง: สเปกตรัมจำลอง
+
+ขั้นที่ 1: สร้างสเปกตรัมจำลองของโมเลกุลแบบ SO₂ (1.5 ล้านจุด มี baseline และ noise):
+
+```sh
+cd rust
+cargo run --release -p pickett-spectrum --example simulate -- ../test/golden/spcat_asym/input/asym.var ../test/golden/spcat_asym/input/asym.int so2.txt
+```
+
+ขั้นที่ 2: วิเคราะห์โดยเริ่มจากค่าคงที่ที่คลาดเคลื่อน (A ผิดไป 8.5 MHz) ทำทั้งหมด 4 รอบ ทุกรอบใช้ `.par` จากรอบก่อนหน้า และลด `--tol` ลงเรื่อย ๆ:
+
+```sh
+cargo run --release -p pickett-spectrum --example analyze -- so2.txt ../test/golden/spfit_asym/input/asym.par ../test/golden/spcat_asym/input/asym.int pass1.lin --tol 60 --min-lgint -4 --err-floor 3 --fit
+cargo run --release -p pickett-spectrum --example analyze -- so2.txt pass1.par ../test/golden/spcat_asym/input/asym.int pass2.lin --tol 10 --min-lgint -5.5 --err-floor 0.5 --fit
+cargo run --release -p pickett-spectrum --example analyze -- so2.txt pass2.par ../test/golden/spcat_asym/input/asym.int pass3.lin --tol 2 --min-lgint -7 --err-floor 0.05 --fit
+cargo run --release -p pickett-spectrum --example analyze -- so2.txt pass3.par ../test/golden/spcat_asym/input/asym.int pass4.lin --tol 0.5 --min-lgint -7 --fit
+```
+
+ผลที่ได้:
+
+| รอบ | tolerance | เส้นที่ assign ได้ | A (MHz) |
+|---|---|---|---|
+| เริ่มต้น | — | — | 60770 |
+| 1 | 60 MHz, เฉพาะเส้นแรง | 66 | 60777.93 ± 0.17 |
+| 2 | 10 MHz | 131 | 60778.5500 ± 0.049 |
+| 3 | 2 MHz | 149 | 60778.5498 ± 0.0049 |
+| 4 | 0.5 MHz | 149 | **60778.550004 ± 0.00003** |
+
+ค่าจริงคือ 60778.55 MHz
+
+### ทำไมต้องทำทีละหลายรอบ และทำไมต้องมี `--err-floor`
+
+- **เริ่มจากเส้นแรงและ tolerance กว้าง:** ตอนเริ่ม ค่าคงที่ยังคลาดเคลื่อน เส้นที่ทำนายจึงอาจห่างจากเส้นจริงหลายสิบ MHz การจับคู่เฉพาะเส้นแรงช่วยลดโอกาส assign ผิด จากนั้นฟิตแล้วทำนายใหม่ ค่อย ๆ ลด tolerance และเพิ่มเส้นที่อ่อนกว่า
+- **`--err-floor`:** SPFIT จะตัดเส้นที่ |obs−calc|/error เกิน `ERRTST` (ในตัวอย่างคือ 1000) ถ้าใช้ error จริงจากการฟิตเส้น (ราว 0.001 MHz) ตั้งแต่รอบแรกที่ obs−calc ยังเป็นสิบ MHz ทุกเส้นจะถูกตัดหมด รอบแรก ๆ จึงต้องใช้ error ที่ใหญ่พอเทียบกับ tolerance ส่วนรอบสุดท้ายให้ใช้ error จริง เพื่อให้ error ของพารามิเตอร์ที่ฟิตได้มีความหมาย
+- **ตรวจผลการ assign เสมอ:** รายการที่ `ambiguous` ถูกตัดออกให้อัตโนมัติ แต่ควรดูค่า obs−calc ใน `.fit` ด้วย ในการทดสอบนี้ รอบแรก assign ผิด 3 เส้น แต่ถูกแก้เองในรอบที่ 2
+
+### ข้อจำกัด
+
+- smoothing และการหาตำแหน่งพีคแบบ parabola ถือว่าจุดข้อมูลห่างเท่ากัน
+- `fit_peak` ฟิตทีละเส้น เส้นที่ซ้อนกันยังต้องจัดการเอง
+- Voigt เป็นแบบประมาณ (pseudo-Voigt) คลาดจาก Voigt จริงไม่เกินราว 1% ซึ่งกระทบความกว้างของเส้นมากกว่าตำแหน่งกลาง
+- การจับคู่ใช้ความถี่อย่างเดียว ยังไม่ได้ใช้ความเข้มช่วยตัดสิน
+
+---
+
+<a id="ch14"></a>
+
+## 14. เอกสารอ้างอิง
 
 - [documentation.md](documentation.md): เอกสารสำหรับนักพัฒนา (สถาปัตยกรรม การ build รายละเอียดโค้ด)
 - [spinv.pdf](spinv.pdf): คู่มือต้นฉบับของ SPFIT/SPCAT รวมรหัสพารามิเตอร์และรหัสไดโพลทั้งหมด (ควรเปิดด้วยโปรแกรมอ่าน PDF เพราะข้อความที่ copy ออกมาจะเพี้ยน)

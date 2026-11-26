@@ -22,9 +22,10 @@ A user manual in Thai, with a step-by-step quick start and troubleshooting, is i
 10. [Rust file library: pickett-io](#rust-file-library-pickett-io)
 11. [Rust in-process runner: pickett-sys](#rust-in-process-runner-pickett-sys)
 12. [Rust high-level API: pickett](#rust-high-level-api-pickett)
-13. [Legacy, alternate and unused files](#legacy-alternate-and-unused-files)
-14. [Known issues and caveats](#known-issues-and-caveats)
-15. [References](#references)
+13. [Rust spectrum analysis: pickett-spectrum](#rust-spectrum-analysis-pickett-spectrum)
+14. [Legacy, alternate and unused files](#legacy-alternate-and-unused-files)
+15. [Known issues and caveats](#known-issues-and-caveats)
+16. [References](#references)
 
 ---
 
@@ -708,6 +709,75 @@ cargo run --release -p pickett --example bench -- ../test/golden/spcat_prolate/i
 | SO₂-like asymmetric top, 198 lines | 34 ms | 21 ms per run | 1.7× |
 
 The small case gains less because much of its time goes into the temporary files behind the memory files.
+
+---
+
+## Rust spectrum analysis: pickett-spectrum
+
+[rust/pickett-spectrum](rust/pickett-spectrum) turns a measured spectrum into assigned lines for SPFIT. It is pure Rust with no dependencies; it uses the `pickett-io` catalog and `.lin` types. The C code is only needed for the predictions and fits, which come from the `pickett` crate.
+
+```rust
+use pickett_spectrum::{assign::*, baseline::*, fit::*, peaks::*, Spectrum};
+
+let spectrum = Spectrum::parse(&std::fs::read_to_string("scan.txt")?)?;
+let flat = spectrum.minus(&asls(&spectrum.intensity, &AslsOptions { lambda: 1e8, p: 0.002, iterations: 15 }));
+let peaks = find_peaks(&flat, &PeakOptions { min_snr: 6.0, min_distance: 3, ..Default::default() });
+let fits: Vec<_> = peaks.iter().filter_map(|p| fit_peak(&flat, p, &FitOptions::default())).collect();
+let centres: Vec<f64> = fits.iter().map(|f| f.center).collect();
+let prediction = pickett::predict(pickett::Flavor::Spinv, &par, &int)?;
+let m: Vec<_> = match_lines(&centres, &prediction.catalog.lines, &MatchOptions { tolerance: 1.0, ..Default::default() })
+    .into_iter().filter(|a| !a.ambiguous).collect();
+let errs: Vec<f64> = m.iter().map(|a| fits[a.observed].center_err).collect();
+let lin = to_lin(&m, &prediction.catalog.lines, 0.0, Some(&errs));   // -> SPFIT
+```
+
+| Module | Contents |
+|---|---|
+| `Spectrum` | Reads frequency/intensity text: spaces, tabs, commas or semicolons; any two columns; comment and header lines skipped; sorted by frequency. Also `slice`, `nearest`, `minus`, `to_text` |
+| `smooth::savitzky_golay` | Savitzky–Golay smoothing. At the ends, the first/last full window's polynomial is used, so no padding is made up |
+| `baseline::asls` | Asymmetric least-squares baseline (Eilers & Boelens 2005), solved in O(n) with a pentadiagonal `L D Lᵀ` factorisation |
+| `peaks::noise_level`, `find_peaks` | Robust noise (MAD of point differences). Peaks above an SNR, height or prominence, at least `min_distance` points from a higher peak, with sub-point parabolic centres and interpolated FWHM |
+| `profile::Profile` | Gaussian, Lorentzian, Voigt (Thompson–Cox–Hastings pseudo-Voigt, within ~1% of the true Voigt); peak-normalised; `fwhm()`, `area()` |
+| `fit::fit_peak` | Levenberg–Marquardt fit of one line plus a constant/linear local baseline. Centre fitted relative to the start for conditioning; standard errors scaled by the reduced χ² |
+| `assign::match_lines`, `to_lin` | Closest-first unique matching within a tolerance, skipping lines weaker than `min_lgint`. `ambiguous` flags measurements with another predicted line within the tolerance; identical predicted frequencies count as one line. The matches are written as a `.lin` file with the predicted quanta |
+| `synth` | `grid`, `synthesize`, and `from_catalog` (a spectrum from a `.cat`, with heights `10^LGINT / area`) |
+
+**Assignment loop.** Starting constants are usually off, so assign in passes and refit after each one:
+1. Start with the strong lines and a wide tolerance.
+2. Narrow the tolerance and include weaker lines with each pass.
+3. In the early passes, give the `.lin` errors a floor that matches the tolerance. SPFIT rejects lines with |obs−calc|/err above `ERRTST` (1000 in the golden `.par`), so with the true measured errors (~10⁻³ MHz) every line would be rejected while the constants are still tens of MHz off.
+4. Use the measured errors only in the last pass, so the fitted errors are meaningful.
+
+**Closed-loop test** (`tests/closed_loop.rs`): the whole chain on a simulated spectrum.
+- **Simulated spectrum:** SPCAT lines from the SO₂-like golden constants, drawn as Gaussians (FWHM 1 MHz, 0.2 MHz steps, 50–350 GHz, 1.5 M points) on a sloping, wavy baseline, plus Gaussian noise (σ = 2×10⁻⁷).
+- **Analysis:** AsLS baseline, peaks at SNR ≥ 8, Gaussian line fits.
+- **Starting point:** the perturbed constants of `spfit_asym/input/asym.par` (A off by 8.5 MHz).
+- **Passes:** 4, at 60 / 10 / 2 / 0.5 MHz.
+- **Checks and results:**
+  - the noise estimate is within 20%;
+  - the fitted centres agree with the true frequencies (RMS pull < 2);
+  - all 148 found lines are assigned, with no wrong quanta (3 wrong in pass 1, none after pass 2);
+  - every fitted constant is within 5σ of the truth: A = 60778.54998 ± 0.00003 against the true 60778.55000;
+  - the final weighted RMS is 0.99.
+
+**Examples:**
+
+```sh
+cd rust
+# a simulated measurement (1.5 M points) from the SO2-like golden constants
+cargo run --release -p pickett-spectrum --example simulate -- ../test/golden/spcat_asym/input/asym.var ../test/golden/spcat_asym/input/asym.int so2.txt
+# one assignment pass, then fit; repeat with the new .par and a smaller --tol
+cargo run --release -p pickett-spectrum --example analyze -- so2.txt ../test/golden/spfit_asym/input/asym.par ../test/golden/spcat_asym/input/asym.int pass1.lin --tol 60 --min-lgint -4 --err-floor 3 --fit
+cargo run --release -p pickett-spectrum --example analyze -- so2.txt pass1.par ../test/golden/spcat_asym/input/asym.int pass2.lin --tol 10 --min-lgint -5.5 --err-floor 0.5 --fit
+```
+
+Four passes (60 / 10 / 2 / 0.5 MHz) assigned all 149 predicted lines in range and gave A = 60778.550004 ± 0.00003.
+
+Limits:
+- Savitzky–Golay and the parabolic peak centres assume evenly spaced points.
+- `fit_peak` fits one line at a time, so blended lines need a wider model, which is not provided.
+- The pseudo-Voigt is an approximation (~1%), which matters for line widths more than for centres.
+- `match_lines` uses only frequencies, not intensities.
 
 ---
 

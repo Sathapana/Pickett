@@ -26,7 +26,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let same = |p: &pickett::Prediction| p.lines == reference.lines && p.partition == reference.partition;
     let ms = |secs: f64, n: usize| 1e3 * secs / n as f64;
 
-    let mut timed = |n_threads: usize| -> Result<(f64, bool), Box<dyn std::error::Error>> {
+    let timed = |n_threads: usize| -> Result<(f64, bool), Box<dyn std::error::Error>> {
         set_threads(n_threads);
         let t = Instant::now();
         let mut ok = true;
