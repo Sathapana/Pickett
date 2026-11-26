@@ -10,6 +10,9 @@
 //!   `pk_dpfit_run`;
 //! * shared: ulib.c, cnjj.c, slibgcc.c, pktmp.c, catutil.c, lsqfit.c, dblas.c, sortsub.c.
 //!
+//! Thread-local state (see `pktls.h`) is on; set `PICKETT_NO_TLS=1` to build
+//! without it, and runs are then serialized with a lock.
+//!
 //! Compiler choice: `PICKETT_CC`, then `CC`, then (on Windows)
 //! `C:\msys64\mingw64\bin\gcc.exe`, then `gcc`. The first one whose
 //! `-dumpmachine` matches the target architecture is used.
@@ -23,7 +26,7 @@ const DRIVERS: &[&str] = &["calcat", "calfit", "subfit"];
 const SPINV: &[&str] = &["spinv", "spinit"];
 const DPI: &[&str] = &["dpi"];
 const HEADERS: &[&str] = &[
-    "calpgm.h", "slib.h", "pickett.h", "cblas.h", "cnjj.h", "lsqfit.h", "catutil.h", "spinit.h",
+    "calpgm.h", "slib.h", "pickett.h", "pktls.h", "cblas.h", "cnjj.h", "lsqfit.h", "catutil.h", "spinit.h",
 ];
 
 /// Global symbols defined in calcat.c, calfit.c, subfit.c and dpi.c that
@@ -52,10 +55,12 @@ fn main() {
 
     println!("cargo:rerun-if-env-changed=PICKETT_CC");
     println!("cargo:rerun-if-env-changed=CC");
+    println!("cargo:rerun-if-env-changed=PICKETT_NO_TLS");
     println!("cargo:rerun-if-changed=build.rs");
     for f in COMMON.iter().chain(DRIVERS).chain(SPINV).chain(DPI) {
         println!("cargo:rerun-if-changed={}", src.join(format!("{f}.c")).display());
     }
+    let no_tls = env::var_os("PICKETT_NO_TLS").is_some();
     for h in HEADERS {
         println!("cargo:rerun-if-changed={}", src.join(h).display());
     }
@@ -70,6 +75,7 @@ fn main() {
         let obj = out.join(format!("{name}_{tag}.o"));
         let mut cmd = Command::new(&tool.cc);
         cmd.args(["-std=gnu17", "-O2", "-w", "-c"])
+            .args(no_tls.then_some("-DPK_NO_TLS"))
             .arg(src.join(format!("{name}.c")))
             .arg("-I")
             .arg(&src)

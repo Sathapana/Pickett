@@ -11,10 +11,11 @@
 #include <math.h>
 #include <string.h>
 #include "calpgm.h"
+#include "pktls.h"
 /* Common Declarations */
 
 static double zero = 0.;
-static int nvib, iwhole, isdgn, nqn;
+static PK_TLS int nvib, iwhole, isdgn, nqn;
 
 int hamx(iblk, nsize, npar, idpar, par, egy, t, dedp, pmix, ifdump)
 const int iblk, nsize, npar;
@@ -25,13 +26,13 @@ double *egy, *t, *dedp, *pmix;
 {
 #define NDPAR 27
 #define NZPAR 11
-  /*@owned@*/ static double *wp[NDPAR + 1];
-  /*@owned@*/ static int *ixpar;
-  /*@owned@*/ static short *jq;
-  /*@owned@*/ static short *isblk;
-  /*@owned@*/ static short *iqnsep;
-  static double wz[NZPAR];
-  static int ioff, nfit, init;
+  /*@owned@*/ static PK_TLS double *wp[NDPAR + 1];
+  /*@owned@*/ static PK_TLS int *ixpar;
+  /*@owned@*/ static PK_TLS short *jq;
+  /*@owned@*/ static PK_TLS short *isblk;
+  /*@owned@*/ static PK_TLS short *iqnsep;
+  static PK_TLS double wz[NZPAR];
+  static PK_TLS int ioff, nfit, init;
   double *w, *ww, *pt, *pd;
   double g, gg, q, qq, x, z, xjq, rx, ry, sqj, sqj0, egy0;
   double aa, ab, ba, bb, ai, rt, rt2, fg, dj1, dj2;

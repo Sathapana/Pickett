@@ -1,5 +1,6 @@
 #include "catutil.h"
 #include <limits.h>
+#include "pktls.h"
 #if INT_MAX > 0x7fff
 #define MAXDEC 9
 #else

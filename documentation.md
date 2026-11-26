@@ -77,7 +77,8 @@ e2a6f56 First commit based on HSPM's code from 2008
 | [ulib.c](ulib.c) | Generic utilities: diagonaliser (`hdiag`, `triag`), eigenvector ordering (`ordblk`), `.par`/`.var` I/O (`getpar`, `getvar`, `putvar`), `.lin` reading (`getlin`), BCD parameter-ID handling, error propagation (`calerr`) |
 | [cnjj.c](cnjj.c), [cnjj.h](cnjj.h) | 3j, 6j and 9j angular-momentum coupling coefficients (log-factorial tables) |
 | [slibgcc.c](slibgcc.c), [slib.h](slib.h) | System-dependent code: command-line/interactive file-name handling (`filget`), `fopenq`, memory sizing, time stamps. Also the library run control: `pk_fail`, memory files, message capture, result callbacks |
-| [pktmp.c](pktmp.c) | `pk_tmpfile()`, a `tmpfile()` that works for ordinary users on Windows |
+| [pktmp.c](pktmp.c) | `pk_tmpfile()`, a `tmpfile()` that works for ordinary users on Windows; `pk_fpu_enter/leave()`, the fixed x87 precision for each run |
+| [pktls.h](pktls.h) | `PK_TLS`: thread-local storage for the library state |
 | [catutil.c](catutil.c), [catutil.h](catutil.h) | Quantum-number parsing (`readqn`), `pcard` free-format numeric parsing, catalog-format helpers |
 | [lsqfit.c](lsqfit.c), [lsqfit.h](lsqfit.h) | Least-squares kernel (Givens rotations, Marquardt step, rank-deficient handling) |
 | [dblas.c](dblas.c), [cblas.h](cblas.h) | Small bundled subset of CBLAS (`cblas_ddot`, `daxpy`, `drot`, …). It can be replaced by ATLAS or a system BLAS. |
@@ -189,8 +190,30 @@ The values are full `double`s, not the rounded file fields. For example, `.cat` 
 
 **`pk_tmpfile()` ([pktmp.c](pktmp.c)).** On Windows, the C runtime's `tmpfile()` creates its file in the root of the current drive (`C:\`), which ordinary users usually cannot write to, so it returns NULL. This affected the original programs too: the `.cat` sort of large catalogs, the `ibufof()` disk buffer and SPFIT's line buffer all use `tmpfile()`. `calpgm.h` now maps `tmpfile()` to `pk_tmpfile()`, which uses the user's temporary folder (`GetTempPath`) and deletes the file when it is closed. On other systems it is `tmpfile()`.
 
+#### Threads (`pktls.h`)
+
+Different threads can run programs at the same time. They get the same results as a single thread, bit for bit.
+
+**How it works.** The programs keep their working state in static variables, 135 of them in the library sources. Instead of moving them into a context struct, which would change the signature of almost every function, every mutable static is declared `static PK_TLS`. That is `_Thread_local` (C11), or `__thread` / `__declspec(thread)`, so each thread gets its own copy.
+- 91 statics are thread-local.
+- Only read-only constants and tables stay shared: `zero`, `pten`, the symmetry tables in `spinv.c`, and so on. Each was checked for direct writes and for writes through its address. `spinv.c`'s `zero` and `szero` are passed as possible outputs to `specfc()`/`dircos()`, so they are thread-local too.
+- `pk_thread_safe()` returns 1 when the build has thread-local state. Define `PK_NO_TLS` to build without it; it then returns 0, and the Rust layer serializes runs with a lock.
+
+Changes the conversion needed or uncovered:
+
+| Change | Why |
+|---|---|
+| `vinfo` / `dipinfo` start as NULL instead of `&vinfo1` / `&dipinfo0` | The address of a thread-local object is not a constant initializer. `setopt()` / `setint()` always set them before use |
+| `csym` in `setblk()` is a local array | It was a static that was swapped for every oblate rotor, so a second oblate run in the same process printed swapped symmetry labels |
+| `ixphase` is reset in `setopt()` | `setint()` adds to it for non-standard phase conventions, so it built up from run to run |
+| `pk_fpu_enter()` / `pk_fpu_leave()` ([pktmp.c](pktmp.c)) around every run | The math library uses x87 instructions on MinGW. The C runtime sets extended precision for the main thread, but new Windows threads start at 53-bit precision, which changed the last digits of results computed on other threads (e.g. S·μ² 4.876953976515408 vs …411). The run sets the runtime's default control word `0x037F` and restores the caller's |
+| `chtime()` uses `localtime_r` / `asctime_r` outside Windows | glibc's `localtime` / `asctime` share one buffer. The Microsoft runtime already uses per-thread buffers |
+
+**Speed.** The 64-bit gcc 16 build uses native Windows TLS (`.tls$`), so a single run is as fast as before: SPCAT prolate 604 ms against 595–675 ms before the change, asym 32 ms against 31–37 ms. gcc 6.3 (32-bit) emulates TLS with `__emutls` calls; this was not timed.
+
+**Check that the tests catch races.** If `qsum`/`temp` in `calcat.c` are made shared again, `cargo test -p pickett-sys --test threads` reports wrong results on several threads.
+
 Limits of this layer, to be removed in later phases:
-- **Not thread-safe.** The code keeps state in static variables, so only one run can be active in a process at a time.
 - **Memory leaks on failure.** If a run fails in the middle of a calculation, the memory it allocated is not freed.
 - **Results are partly text.** The calculation still formats its output files internally; memory files only redirect them. The callbacks cover catalog lines, levels, Q(T) and fitted parameters. Per-line fit residuals (obs−calc, including blends) are only in the `.fit` text so far.
 
@@ -576,12 +599,16 @@ pacman -S mingw-w64-x86_64-gcc
 
 This was tested with gcc 16.2 (MSYS2) and Rust 1.100 on Windows 11. Linking works with Rust's own MinGW linker.
 
-**Concurrency.** Calls are serialized with a global mutex, because the C code is not reentrant. Calling from several threads is safe, but the runs happen one after another.
+**Concurrency.** Each thread uses its own C state (see [Threads](#threads-pktlsh)), so calls from different threads run in parallel. `thread_safe()` tells whether the library was built that way. Build with `PICKETT_NO_TLS=1` to turn it off; calls are then serialized with a global mutex.
 
 **Tests** (`cargo test -p pickett-sys`):
 - Every SPCAT/SPFIT/DPCAT/DPFIT golden case runs twice in-process. `.cat`/`.egy` must match exactly, and `.par`/`.var`/`.bak` must match within `1e-6` relative. The 64-bit build fits A = 60778.54915641392 MHz against the golden 60778.54915641401.
 - A failing run returns `Err`, and the next run still works.
 - Three threads run at once.
+- `tests/threads.rs`:
+  - 8 threads each run all six SPCAT/SPFIT/DPCAT/DPFIT golden cases twice, mixing the programs, and every record and output file must equal the single-thread result exactly;
+  - a thread that keeps failing does not disturb four others;
+  - `thread_safe()` matches the build setting.
 - A directory name with dots works.
 - Deliberately corrupted expected files make the test fail, so the comparison is known to work.
 - `tests/memory.rs` covers `run_memory`:
@@ -611,6 +638,7 @@ let q300 = spectrum.partition_at(300.0);
 |---|---|
 | `predict(flavor, &var, &int)`, `predict_text(flavor, var, int)` | `Prediction`: `lines` (full precision, sorted by frequency), `levels`, `partition`, `catalog` (the `.cat` as written), `report` (`.out`), `log`, `files`. `partition_at(T)` interpolates ln Q in ln T between table points |
 | `fit(flavor, &par, &lin)`, `fit_text(flavor, par, lin)` | `FitResult`: `params` (full precision), `iterations`, `par` and `var` (as `ParFile`, ready for the next fit or `predict`), `report` (`.fit`), `log`, `files`. `rms_error()` |
+| `predict_parallel(flavor, &jobs, threads)` | Many predictions at once, on all cores by default. Results come back in job order and equal `predict` for each job. Use it for parameter scans and Monte-Carlo error estimates |
 | `Error` | `Run` (with the program's `log`), `NoOutput` (e.g. SPFIT did no iteration), `Parse`, `BadArgument` |
 
 `Flavor::Spinv` runs SPCAT/SPFIT and `Flavor::Dpi` runs DPCAT/DPFIT.
@@ -626,7 +654,18 @@ let q300 = spectrum.partition_at(300.0);
 ```sh
 cargo run -p pickett --example fit_predict -- ../test/golden/spfit_asym/input/asym.par \
     ../test/golden/spfit_asym/input/asym.lin ../test/golden/spcat_asym/input/asym.int
+cargo run --release -p pickett --example bench -- ../test/golden/spcat_prolate/input/prolate.var \
+    ../test/golden/spcat_prolate/input/prolate.int 16 8
 ```
+
+`bench` times runs one after another and then spread over threads. On an 8-core Windows 11 machine (release build):
+
+| Case | One run | 8 threads | Speed-up |
+|---|---|---|---|
+| CH₃CN prolate, 2314 lines | 604 ms | 158 ms per run | 3.8× |
+| SO₂-like asymmetric top, 198 lines | 34 ms | 21 ms per run | 1.7× |
+
+The small case gains less because much of its time goes into the temporary files behind the memory files.
 
 ---
 
@@ -650,7 +689,7 @@ cargo run -p pickett --example fit_predict -- ../test/golden/spfit_asym/input/as
 1. **Partition-function grid edge case.** If the `.int` `TEMP` is exactly 0, the 0 K grid point remains and causes a division by zero. `TEMP = 0` is not physically valid for SPCAT anyway.
 2. **Legacy C.** K&R definitions, `gets()` in the catalog utilities, and implicit `int main()` all trigger warnings. gcc 15+ (C23 by default) needs `-std=gnu17`.
 3. **The PDF manuals' text layer is font-mangled** (ligatures and Greek letters encoded oddly). Read them in a PDF viewer rather than extracting the text.
-4. **Library limits.** The run functions are not thread-safe, and memory is not freed after a failure in the middle of a calculation (see [Library entry points](#library-entry-points-picketth)).
+4. **Library limits.** Memory is not freed after a failure in the middle of a calculation, and memory files go through temporary files (see [Library entry points](#library-entry-points-picketth)). Runs are parallel across threads, but a single run uses one core.
 
 ### Fixed build issues
 

@@ -144,7 +144,8 @@ pub fn run_memory(program: Program, base: &str, inputs: &[(&str, &[u8])]) -> Mem
     let _guard = lock();
     let mut files = BTreeMap::new();
     let (status, log);
-    // SAFETY: the lock gives this thread sole use of the C library state.
+    // SAFETY: the C library state used here is this thread's own (or the
+    // lock gives this thread sole use of it).
     // `sink` and `records` outlive the run and are unregistered before they
     // are dropped. All strings passed are NUL-terminated or have lengths.
     unsafe {

@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "calpgm.h"
+#include "pktls.h"
 #define NDILINE 130
 
 int sortn(char *inpname, char *outname, int dokey);
@@ -12,7 +13,7 @@ int memsort(int nline, const int *key, char **pbuf);
 int memfind(int ibgn, int nbuf, const int *key, const char *buf0, 
             char **pbuf);
 
-static int ndline;
+static PK_TLS int ndline;
 
 int sortn(inpname, outname, dokey)
 char *inpname, *outname;

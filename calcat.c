@@ -29,6 +29,7 @@
 #include <string.h>
 #include <math.h>
 #include "calpgm.h"
+#include "pktls.h"
 #define MAXQNX  13
 typedef struct {
   /*@owned@*/ /*@null@*/ double *eigblk;
@@ -55,7 +56,9 @@ static int calcat_body(int argc, char *argv[]);
 int calcat_run(int argc, char *argv[])
 {
   jmp_buf jb;
+  unsigned int fpu;
   int rc;
+  fpu = pk_fpu_enter(); /* same precision on every thread */
   rc = setjmp(jb);
   if (rc == 0) {
     pk_set_jump(&jb);
@@ -63,6 +66,7 @@ int calcat_run(int argc, char *argv[])
   }
   pk_set_jump(NULL);
   pk_close_all();
+  pk_fpu_leave(fpu);
   return rc;
 }
 
@@ -75,11 +79,11 @@ static int calcat_body(int argc, char *argv[])
 #define NCARD 130
 #define NDVEC 10
  /* Initialized data */
-  static double temp[NTEMP], qsum[NTEMP];
+  static PK_TLS double temp[NTEMP], qsum[NTEMP];
   static const char *ext[NFILE] =
     { "int", "var", "out", "cat", "str", "egy" };
   enum efile {eint, evar, eout, ecat, estr, eegy};
-  static char sqn[4*MAXQN + 2];
+  static PK_TLS char sqn[4*MAXQN + 2];
   static char warn[] = " WARNING: THERE WAS NO DIAGONALIZATION\n";
   static char headq[] = "TEMPERATURE - Q(SPIN-ROT.) - log Q(SPIN-ROT.)\n";
   /* Local variables */
@@ -895,10 +899,10 @@ double *s, *t, *u, *wk;
 }                               /* simt */
 
 /* ibufof state; file scope so ibufof_reset() can clear it between runs */
-static /*@null@*/ FILE *scratch;
-static long maxrec, lsizb;
-static int mempos, orgpos, nbsav;
-static unsigned int maxdm;
+static PK_TLS /*@null@*/ FILE *scratch;
+static PK_TLS long maxrec, lsizb;
+static PK_TLS int mempos, orgpos, nbsav;
+static PK_TLS unsigned int maxdm;
 
 static void ibufof_reset(void)
 {

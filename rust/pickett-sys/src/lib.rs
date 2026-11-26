@@ -18,10 +18,12 @@
 //! messages and full-precision records of the results (catalog lines,
 //! energy levels, partition function, fitted parameters).
 //!
+//! Threads: the C library keeps its state per thread (see `pktls.h`), so
+//! runs on different threads proceed in parallel and give the same results
+//! as on one thread. If it was built with `PK_NO_TLS`, [`thread_safe`] is
+//! false and runs are serialized with a global lock instead.
+//!
 //! Limits of this layer:
-//! * The C code keeps state in static variables, so only one run can be
-//!   active at a time. Calls are serialized with a global lock, so calling
-//!   from several threads is safe but not parallel.
 //! * A fatal error returns [`RunError`] instead of ending the process, and
 //!   the files the program opened are closed. Memory it had allocated is
 //!   not freed, so a long-running host should not rely on many failed runs.
@@ -81,6 +83,7 @@ pub mod ffi {
         pub fn pk_dpcat_run(argc: c_int, argv: *mut *mut c_char) -> c_int;
         pub fn pk_dpfit_run(argc: c_int, argv: *mut *mut c_char) -> c_int;
         pub fn pk_library_mode(on: c_int);
+        pub fn pk_thread_safe() -> c_int;
 
         pub fn pk_vfs_begin();
         pub fn pk_vfs_end();
@@ -168,11 +171,19 @@ impl fmt::Display for RunError {
 
 impl std::error::Error for RunError {}
 
+/// True when the C library keeps its state per thread, so runs on
+/// different threads proceed in parallel. When false, runs are serialized.
+pub fn thread_safe() -> bool {
+    // SAFETY: a pure query of a compile-time setting.
+    unsafe { ffi::pk_thread_safe() != 0 }
+}
+
 static LOCK: Mutex<()> = Mutex::new(());
 
-/// Holds the global lock: only one run may use the C code at a time.
-pub(crate) fn lock() -> std::sync::MutexGuard<'static, ()> {
-    LOCK.lock().unwrap_or_else(|e| e.into_inner())
+/// Serializes runs when the C library is not thread-safe; otherwise every
+/// thread uses its own C state and no lock is needed.
+pub(crate) fn lock() -> Option<std::sync::MutexGuard<'static, ()>> {
+    (!thread_safe()).then(|| LOCK.lock().unwrap_or_else(|e| e.into_inner()))
 }
 
 /// Calls the program's run function. The caller must hold [`lock`].
@@ -189,8 +200,8 @@ pub(crate) fn call_locked<S: AsRef<str>>(program: Program, args: &[S]) -> Result
     let argc = raw.len() as c_int;
     raw.push(std::ptr::null_mut());
     // SAFETY: argv holds argc valid NUL-terminated strings followed by a
-    // null pointer, all alive until after the call; the caller holds the
-    // lock, so no other run is active (the C code is not reentrant).
+    // null pointer, all alive until after the call; the caller holds
+    // [`lock`]: the C state is this thread's own, or no other run is active.
     let status = unsafe {
         ffi::pk_library_mode(1);
         (program.entry())(argc, raw.as_mut_ptr())

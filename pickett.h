@@ -28,6 +28,10 @@ int calfit_run(int argc, char *argv[]);
 /* use to stop early, so the host application keeps its own handler.      */
 void pk_library_mode(int on);
 
+/* 1 when each thread has its own copy of the library state (see pktls.h): */
+/* then different threads may run programs at the same time.               */
+int pk_thread_safe(void);
+
 /* Fatal error inside the library: return `code` from the active run       */
 /* function, or exit(code) when no run function is active.                 */
 void pk_fail(int code);

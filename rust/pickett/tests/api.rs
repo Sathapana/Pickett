@@ -3,7 +3,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use pickett::{fit, fit_text, predict, predict_text, CatFile, Error, Flavor, IntFile, LinFile, ParFile};
+use pickett::{fit, fit_text, predict, predict_parallel, predict_text, CatFile, Error, Flavor, IntFile, LinFile, ParFile};
 
 fn golden(rel: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test/golden").join(rel)
@@ -119,4 +119,32 @@ fn errors_carry_the_program_message() {
     }
     // and the library still works afterwards
     predict_text(Flavor::Spinv, &read("spcat_prolate/input/prolate.var"), &int).unwrap();
+}
+
+#[test]
+fn predict_parallel_matches_sequential_and_keeps_order() {
+    // a small scan of rotational constant A around its value
+    let base = ParFile::parse(&read("spcat_asym/input/asym.var"), Flavor::Spinv).unwrap();
+    let int = IntFile::parse(&read("spcat_asym/input/asym.int")).unwrap();
+    let jobs: Vec<(ParFile, IntFile)> = (0..12)
+        .map(|k| {
+            let mut v = base.clone();
+            v.params[0].value += 10.0 * (k as f64 - 6.0); // A in MHz
+            (v, int.clone())
+        })
+        .collect();
+    let parallel = predict_parallel(Flavor::Spinv, &jobs, Some(4));
+    assert_eq!(parallel.len(), jobs.len());
+    let mut first_lines = Vec::new();
+    for ((var, int), p) in jobs.iter().zip(&parallel) {
+        let p = p.as_ref().unwrap();
+        let s = predict(Flavor::Spinv, var, int).unwrap();
+        assert!(p.lines == s.lines && p.partition == s.partition, "parallel result differs");
+        first_lines.push(p.lines[0].freq);
+    }
+    // results are in job order: changing A moves the lines, so neighbours differ
+    assert!(first_lines.windows(2).all(|w| w[0] != w[1]));
+    // all cores by default, and an empty batch
+    assert_eq!(predict_parallel(Flavor::Spinv, &jobs[..2], None).len(), 2);
+    assert!(predict_parallel(Flavor::Spinv, &[], None).is_empty());
 }

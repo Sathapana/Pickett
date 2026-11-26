@@ -13,6 +13,7 @@
 #include <string.h>
 #include <math.h>
 #include "calpgm.h"
+#include "pktls.h"
 
 static double zero = 0.;
 static double tiny = 1.e-36;
@@ -648,7 +649,7 @@ double *var, *erpar;
 const int nfit, iflg;
 {                               /*  SUBROUTINE TO READ VARIANCE INTO PACKED UPPER TRIANGULAR */
 #define NCARD 130
-  static double dval[8] = { 2., 2., 2., 2., 2., 2., 2., 2. };
+  static PK_TLS double dval[8] = { 2., 2., 2., 2., 2., 2., 2., 2. };
   double *pvar, *pcol, val;
   int i, j, k, n, nv, ibcd, ndbcd;
   char card[NCARD];

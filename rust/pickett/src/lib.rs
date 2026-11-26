@@ -26,8 +26,9 @@
 //! # }
 //! ```
 //!
-//! The C code underneath is not reentrant: calls from several threads are
-//! run one at a time (see `pickett-sys`).
+//! Calls from different threads run in parallel: the C library keeps its
+//! state per thread. [`predict_parallel`] runs a batch of predictions on all
+//! cores.
 
 use std::collections::BTreeMap;
 use std::fmt;
@@ -161,6 +162,39 @@ pub fn predict_text(flavor: Flavor, var: &str, int: &str) -> Result<Prediction, 
     let mut lines = records.cat_lines;
     lines.sort_by(|a, b| a.freq.total_cmp(&b.freq)); // stable: ties keep calculation order
     Ok(Prediction { lines, levels: records.levels, partition: records.partition, catalog, report, log, files })
+}
+
+/// Runs many predictions at once on `threads` threads (all CPU cores when
+/// `None`). Results are in the order of `jobs` and are the same as calling
+/// [`predict`] for each job. Useful for parameter scans or Monte-Carlo
+/// estimates of prediction uncertainty.
+pub fn predict_parallel(
+    flavor: Flavor,
+    jobs: &[(ParFile, IntFile)],
+    threads: Option<usize>,
+) -> Vec<Result<Prediction, Error>> {
+    let n = threads
+        .unwrap_or_else(|| std::thread::available_parallelism().map_or(1, |n| n.get()))
+        .clamp(1, jobs.len().max(1));
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let mut done: Vec<(usize, Result<Prediction, Error>)> = std::thread::scope(|s| {
+        let workers: Vec<_> = (0..n)
+            .map(|_| {
+                s.spawn(|| {
+                    let mut out = Vec::new();
+                    loop {
+                        let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                        let Some((var, int)) = jobs.get(i) else { break };
+                        out.push((i, predict(flavor, var, int)));
+                    }
+                    out
+                })
+            })
+            .collect();
+        workers.into_iter().flat_map(|w| w.join().expect("prediction thread panicked")).collect()
+    });
+    done.sort_by_key(|(i, _)| *i);
+    done.into_iter().map(|(_, r)| r).collect()
 }
 
 /// Fits parameters to assigned lines: runs SPFIT (`Flavor::Spinv`) or DPFIT

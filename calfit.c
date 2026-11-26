@@ -29,6 +29,7 @@
 #include <stdlib.h>
 #include "calpgm.h"
 #include "lsqfit.h"
+#include "pktls.h"
 #define NDCARD 130
 #define PR_DELAY 6    /* seconds delay between informational messages */
 /************** CALFIT interfaces ***********************************/
@@ -38,14 +39,16 @@ int parer(double par, double errx, double dif,
 int linein(FILE * luin, int *nline, int iqnfmt);
 int lineix(FILE * lu, int flg, int nline, int nblkpf, int iqnfmt);
 /********************************************************************/
-static char card[NDCARD];
+static PK_TLS char card[NDCARD];
 static int calfit_body(int argc, char *argv[]);
 
 /* Library entry point (pickett.h); the program's main() is in calfitm.c */
 int calfit_run(int argc, char *argv[])
 {
   jmp_buf jb;
+  unsigned int fpu;
   int rc;
+  fpu = pk_fpu_enter(); /* same precision on every thread */
   rc = setjmp(jb);
   if (rc == 0) {
     pk_set_jump(&jb);
@@ -53,6 +56,7 @@ int calfit_run(int argc, char *argv[])
   }
   pk_set_jump(NULL);
   pk_close_all();
+  pk_fpu_leave(fpu);
   return rc;
 }
 

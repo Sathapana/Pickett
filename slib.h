@@ -22,5 +22,7 @@ void pk_close_all(void);
 FILE *pk_fopen(const char *name, const char *mode); /* memory files aware */
 FILE *pk_stdout(void);            /* where program messages go */
 FILE *pk_tmpfile(void);           /* tmpfile() that works on Windows (pktmp.c) */
+unsigned int pk_fpu_enter(void);  /* fixed x87 precision for a run (pktmp.c) */
+void pk_fpu_leave(unsigned int old);
 int  pk_puts(const char *s);
 /*@null@*/ const PK_SINK *pk_get_sink(void);

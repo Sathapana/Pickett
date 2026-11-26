@@ -5,6 +5,7 @@
 #include <signal.h>
 #include <ctype.h>
 #include "slib.h"
+#include "pktls.h"
 #ifndef NULL
 #define NULL (void *)(0)
 #endif
@@ -25,14 +26,19 @@
 /***************** run control for library use (pickett.h) *************/
 /* pk_fail() replaces exit(EXIT_FAILURE): when a run function is active  */
 /* it closes the files opened with fopenq() and longjmps back to it.     */
-static /*@null@*/ jmp_buf *pk_jump = NULL;
-static int pk_libmode = 0;
+static PK_TLS /*@null@*/ jmp_buf *pk_jump = NULL;
+static PK_TLS int pk_libmode = 0;
 #define PK_MAXFILES 64
-static /*@null@*/ FILE *pk_files[PK_MAXFILES];
+static PK_TLS /*@null@*/ FILE *pk_files[PK_MAXFILES];
 
 void pk_library_mode(int on)
 {
   pk_libmode = on;
+}
+
+int pk_thread_safe(void)
+{
+  return PK_THREAD_SAFE;
 }
 
 void pk_set_jump(jmp_buf *jb)
@@ -86,8 +92,8 @@ typedef struct {
   size_t len;
   FILE *wfp;         /* temporary file while open for writing */
 } PK_VFILE;
-static PK_VFILE *pk_vf = NULL;
-static int pk_nvf = 0, pk_maxvf = 0, pk_vfs_on = 0;
+static PK_TLS PK_VFILE *pk_vf = NULL;
+static PK_TLS int pk_nvf = 0, pk_maxvf = 0, pk_vfs_on = 0;
 
 static int vf_find(const char *name)
 {
@@ -229,9 +235,9 @@ static int pk_vfs_close(FILE *f)
 }
 
 /***************** program messages (pk_log_*, see pickett.h) ************/
-static int pk_logmode = PK_LOG_STDOUT;
-static /*@null@*/ FILE *pk_logfp = NULL;
-static /*@null@*/ char *pk_logbuf = NULL;
+static PK_TLS int pk_logmode = PK_LOG_STDOUT;
+static PK_TLS /*@null@*/ FILE *pk_logfp = NULL;
+static PK_TLS /*@null@*/ char *pk_logbuf = NULL;
 
 FILE *pk_stdout(void)
 {
@@ -285,7 +291,7 @@ const char *pk_log_text(size_t *len)
 }
 
 /***************** result callbacks (pk_set_sink, see pickett.h) *********/
-static /*@null@*/ const PK_SINK *pk_sink = NULL;
+static PK_TLS /*@null@*/ const PK_SINK *pk_sink = NULL;
 
 void pk_set_sink(const PK_SINK *sink)
 {
@@ -306,14 +312,24 @@ const int N;
   time_t curtime;
   struct tm *loctime;
   int k, n;
+#ifndef _WIN32
+  struct tm tmbuf;
+  char abuf[32];
+#endif
   n = N;
   /* Get the current time. */
   curtime = time (NULL);
-  /* Convert it to local time representation. */
+  /* Convert it to local time representation. The Microsoft C runtime */
+  /* keeps per-thread buffers; elsewhere use the reentrant versions.  */
+#ifdef _WIN32
   loctime = localtime (&curtime);
+  buffer = (loctime != NULL) ? asctime (loctime) : NULL;
+#else
+  loctime = localtime_r (&curtime, &tmbuf);
+  buffer = (loctime != NULL) ? asctime_r (loctime, abuf) : NULL;
+#endif
   /* copy the date and time in the standard format. */
-  if (loctime != NULL) {
-    buffer=asctime (loctime);
+  if (buffer != NULL) {
     k= (int) strlen(str);
     n -= NCTIME + 2;
     while(k < n) str[k++]=' ';
@@ -329,8 +345,8 @@ int delay;
 { 
   /* if delay is different, save time and return false */  
   /* else return true if time interval >= delay */
-  static time_t tcmp = 0;
-  static int old_delay = -1;
+  static PK_TLS time_t tcmp = 0;
+  static PK_TLS int old_delay = -1;
 
   if (delay == old_delay) {
     if (time(NULL) >= tcmp) {
@@ -520,7 +536,7 @@ FILE *stream;
   return n;
 } /* fgetstr */
 
-static int brkflg;
+static PK_TLS int brkflg;
 
 int rqexit(ival)
 const int ival;
