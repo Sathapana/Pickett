@@ -15,6 +15,12 @@ BLASLIB=
 ifeq ($(strip $(BLASLIB)),)
 LBLAS=dblas.o
 endif
+# pktmp.c uses threads for the partition-function table: POSIX needs pthread
+ifeq ($(OS),Windows_NT)
+THREADLIB=
+else
+THREADLIB=-lpthread
+endif
 # headers that every calpgm.h user depends on
 HDR=calpgm.h slib.h pickett.h
 default: ${EXEQ}
@@ -27,22 +33,22 @@ clean:
 .PHONY: default all selftest install clean
 # SPFIT/SPCAT use spinv.c + spinit.c, DPFIT/DPCAT use dpi.c.
 # calfitm.c/calcatm.c hold main(); the programs are calfit_run()/calcat_run().
-dpfit: calfitm.o calfit.o subfit.o dpi.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm
-dpcat: calcatm.o calcat.o sortsub.o dpi.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm
-spfit: calfitm.o calfit.o subfit.o spinv.o spinit.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm
-spcat: calcatm.o calcat.o sortsub.o spinv.o spinit.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm
-pkselftest_sp: pkselftest.o calcat.o calfit.o subfit.o sortsub.o spinv.o spinit.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm
-pkselftest_dp: pkselftest.o calcat.o calfit.o subfit.o sortsub.o dpi.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm
-calmrg: calmrg.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm
-calbak: calbak.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm
-termval: termval.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm
-stark: stark.o splib.a ; $(CC) -o $@ $^ $(BLASLIB) -lm
-moiam: moiam.o ftran.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm
-iamcalc: iamcalc.o ftran.o readopt.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm
-iambak: iambak.o readopt.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm
-reassign: reassign.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm
-sortegy: sortegy.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm
-sortn: sortn.o sortsub.o splib.a; $(CC) -o $@ $^
+dpfit: calfitm.o calfit.o subfit.o dpi.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm $(THREADLIB)
+dpcat: calcatm.o calcat.o sortsub.o dpi.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm $(THREADLIB)
+spfit: calfitm.o calfit.o subfit.o spinv.o spinit.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm $(THREADLIB)
+spcat: calcatm.o calcat.o sortsub.o spinv.o spinit.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm $(THREADLIB)
+pkselftest_sp: pkselftest.o calcat.o calfit.o subfit.o sortsub.o spinv.o spinit.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm $(THREADLIB)
+pkselftest_dp: pkselftest.o calcat.o calfit.o subfit.o sortsub.o dpi.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm $(THREADLIB)
+calmrg: calmrg.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm $(THREADLIB)
+calbak: calbak.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm $(THREADLIB)
+termval: termval.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm $(THREADLIB)
+stark: stark.o splib.a ; $(CC) -o $@ $^ $(BLASLIB) -lm $(THREADLIB)
+moiam: moiam.o ftran.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm $(THREADLIB)
+iamcalc: iamcalc.o ftran.o readopt.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm $(THREADLIB)
+iambak: iambak.o readopt.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm $(THREADLIB)
+reassign: reassign.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm $(THREADLIB)
+sortegy: sortegy.o splib.a; $(CC) -o $@ $^ $(BLASLIB) -lm $(THREADLIB)
+sortn: sortn.o sortsub.o splib.a; $(CC) -o $@ $^ $(THREADLIB)
 
 splib.a: ulib.o cnjj.o slibgcc.o pktmp.o catutil.o lsqfit.o $(LBLAS)
 	ar r splib.a $^

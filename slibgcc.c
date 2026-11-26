@@ -41,6 +41,23 @@ int pk_thread_safe(void)
   return PK_THREAD_SAFE;
 }
 
+static PK_TLS int pk_nthreads = 0;   /* <= 0: one per CPU core */
+
+void pk_set_threads(int n)
+{
+  pk_nthreads = n;
+}
+
+int pk_get_threads(void)
+{ /* pk_set_threads(), else $PICKETT_THREADS, else one per core */
+  const char *env;
+  int n;
+  if (pk_nthreads > 0) return pk_nthreads;
+  env = getenv("PICKETT_THREADS");
+  n = (env != NULL) ? atoi(env) : 0;
+  return (n > 0) ? n : pk_cpu_count();
+}
+
 void pk_set_jump(jmp_buf *jb)
 {
   pk_jump = jb;

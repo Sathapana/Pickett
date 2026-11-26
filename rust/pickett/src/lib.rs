@@ -165,7 +165,8 @@ pub fn predict_text(flavor: Flavor, var: &str, int: &str) -> Result<Prediction, 
 }
 
 /// Runs many predictions at once on `threads` threads (all CPU cores when
-/// `None`). Results are in the order of `jobs` and are the same as calling
+/// `None`). Each prediction then runs on one thread (see
+/// [`pickett_sys::set_threads`]). Results are in the order of `jobs` and are the same as calling
 /// [`predict`] for each job. Useful for parameter scans or Monte-Carlo
 /// estimates of prediction uncertainty.
 pub fn predict_parallel(
@@ -181,6 +182,8 @@ pub fn predict_parallel(
         let workers: Vec<_> = (0..n)
             .map(|_| {
                 s.spawn(|| {
+                    // every core already runs a whole prediction
+                    pickett_sys::set_threads(1);
                     let mut out = Vec::new();
                     loop {
                         let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);

@@ -109,6 +109,7 @@ fn main() {
     println!("cargo:rustc-link-lib=static=pickett");
     if target_os != "windows" {
         println!("cargo:rustc-link-lib=m");
+        println!("cargo:rustc-link-lib=pthread"); // pk_run_parallel (pktmp.c)
     }
 }
 

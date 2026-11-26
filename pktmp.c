@@ -15,6 +15,110 @@
 /* The run functions set the runtime's default (0x037F: extended precision, */
 /* round to nearest, exceptions masked) and restore the caller's value.    */
 #include <stdio.h>
+#include <stdlib.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
+/* pk_run_parallel(fn, ctx, n): calls fn(ctx, part, n) for part = 0..n-1,  */
+/* part 0 on the calling thread and the others on new threads, and waits    */
+/* for all of them. Each worker uses the same x87 setting as a run          */
+/* (pk_fpu_enter), so results do not depend on the thread. If a thread      */
+/* cannot be created, its part runs on the calling thread.                  */
+typedef void (*pk_task_fn)(void *ctx, int part, int nparts);
+unsigned int pk_fpu_enter(void);
+void pk_fpu_leave(unsigned int old);
+
+typedef struct {
+  pk_task_fn fn;
+  void *ctx;
+  int part, nparts;
+} PK_TASK;
+
+static void pk_task_body(PK_TASK *t)
+{
+  unsigned int fpu = pk_fpu_enter();
+  t->fn(t->ctx, t->part, t->nparts);
+  pk_fpu_leave(fpu);
+}
+
+#define PK_MAXTHREADS 64
+
+#ifdef _WIN32
+static DWORD WINAPI pk_task_start(LPVOID arg)
+{
+  pk_task_body((PK_TASK *) arg);
+  return 0;
+}
+
+int pk_cpu_count(void)
+{
+  SYSTEM_INFO si;
+  GetSystemInfo(&si);
+  return si.dwNumberOfProcessors > 0 ? (int) si.dwNumberOfProcessors : 1;
+}
+
+void pk_run_parallel(pk_task_fn fn, void *ctx, int nparts)
+{
+  PK_TASK task[PK_MAXTHREADS];
+  HANDLE h[PK_MAXTHREADS];
+  int k, nh = 0;
+  if (nparts > PK_MAXTHREADS) nparts = PK_MAXTHREADS;
+  if (nparts < 1) nparts = 1;
+  for (k = 0; k < nparts; ++k) {
+    task[k].fn = fn; task[k].ctx = ctx; task[k].part = k; task[k].nparts = nparts;
+  }
+  for (k = 1; k < nparts; ++k) {
+    h[nh] = CreateThread(NULL, 0, pk_task_start, &task[k], 0, NULL);
+    if (h[nh] != NULL) {
+      ++nh;
+    } else {
+      pk_task_body(&task[k]);   /* no thread: do it here */
+    }
+  }
+  fn(ctx, 0, nparts);           /* the caller already has the run's setting */
+  if (nh > 0) WaitForMultipleObjects((DWORD) nh, h, TRUE, INFINITE);
+  for (k = 0; k < nh; ++k) CloseHandle(h[k]);
+}
+
+#else
+#include <pthread.h>
+#include <unistd.h>
+
+static void *pk_task_start(void *arg)
+{
+  pk_task_body((PK_TASK *) arg);
+  return NULL;
+}
+
+int pk_cpu_count(void)
+{
+  long n = sysconf(_SC_NPROCESSORS_ONLN);
+  return n > 0 ? (int) n : 1;
+}
+
+void pk_run_parallel(pk_task_fn fn, void *ctx, int nparts)
+{
+  PK_TASK task[PK_MAXTHREADS];
+  pthread_t th[PK_MAXTHREADS];
+  int started[PK_MAXTHREADS];
+  int k;
+  if (nparts > PK_MAXTHREADS) nparts = PK_MAXTHREADS;
+  if (nparts < 1) nparts = 1;
+  for (k = 0; k < nparts; ++k) {
+    task[k].fn = fn; task[k].ctx = ctx; task[k].part = k; task[k].nparts = nparts;
+    started[k] = 0;
+  }
+  for (k = 1; k < nparts; ++k) {
+    started[k] = (pthread_create(&th[k], NULL, pk_task_start, &task[k]) == 0);
+    if (!started[k]) pk_task_body(&task[k]);
+  }
+  fn(ctx, 0, nparts);
+  for (k = 1; k < nparts; ++k) {
+    if (started[k]) pthread_join(th[k], NULL);
+  }
+}
+#endif
 
 #if defined(__GNUC__) && (defined(__x86_64__) || defined(__i386__))
 unsigned int pk_fpu_enter(void)

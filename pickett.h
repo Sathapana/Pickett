@@ -32,6 +32,14 @@ void pk_library_mode(int on);
 /* then different threads may run programs at the same time.               */
 int pk_thread_safe(void);
 
+/* Threads one run may use for its own work (currently the partition-    */
+/* function table of SPCAT/DPCAT). n <= 0: the PICKETT_THREADS environ-  */
+/* ment variable if set, else one per CPU core (default);                */
+/* n = 1: no extra threads, e.g. when many runs already run in parallel. */
+/* The setting belongs to the calling thread. Results do not depend on n.*/
+void pk_set_threads(int n);
+int  pk_get_threads(void);   /* the number a run would use now */
+
 /* Fatal error inside the library: return `code` from the active run       */
 /* function, or exit(code) when no run function is active.                 */
 void pk_fail(int code);

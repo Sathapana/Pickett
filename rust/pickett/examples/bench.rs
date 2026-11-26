@@ -1,10 +1,15 @@
-//! Times SPCAT runs: `repeat` runs one after another, then the same number
-//! spread over `threads` threads (in parallel when the C library is
-//! thread-safe). Usage:
+//! Times SPCAT runs three ways:
+//!   1. one run at a time, each run on one thread (`set_threads(1)`);
+//!   2. one run at a time, each run using all cores for its own work
+//!      (the default);
+//!   3. `repeat` runs spread over `threads` threads, each run on one thread.
+//! Every result is checked against the first run.
+//! Usage:
 //!   cargo run --release -p pickett --example bench -- <mol.var> <mol.int> [repeat] [threads] [dpi]
 use std::time::Instant;
 
 use pickett::{predict_text, Flavor};
+use pickett_sys::set_threads;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let a: Vec<String> = std::env::args().skip(1).collect();
@@ -18,29 +23,40 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let flavor = if a.get(4).map(String::as_str) == Some("dpi") { Flavor::Dpi } else { Flavor::Spinv };
 
     let reference = predict_text(flavor, &var, &int)?; // warm-up and reference result
-    let t0 = Instant::now();
-    for _ in 0..repeat {
-        predict_text(flavor, &var, &int)?;
-    }
-    let seq = t0.elapsed().as_secs_f64();
+    let same = |p: &pickett::Prediction| p.lines == reference.lines && p.partition == reference.partition;
+    let ms = |secs: f64, n: usize| 1e3 * secs / n as f64;
 
-    let t1 = Instant::now();
+    let mut timed = |n_threads: usize| -> Result<(f64, bool), Box<dyn std::error::Error>> {
+        set_threads(n_threads);
+        let t = Instant::now();
+        let mut ok = true;
+        for _ in 0..repeat {
+            ok &= same(&predict_text(flavor, &var, &int)?);
+        }
+        Ok((t.elapsed().as_secs_f64(), ok))
+    };
+    let (one, ok1) = timed(1)?;
+    let (all, ok2) = timed(0)?;
+
     let per_thread = repeat.div_ceil(threads);
-    let same = std::thread::scope(|s| {
+    let t = Instant::now();
+    let ok3 = std::thread::scope(|s| {
         let handles: Vec<_> = (0..threads)
-            .map(|_| s.spawn(|| (0..per_thread).all(|_| predict_text(flavor, &var, &int).map(|p| p.lines == reference.lines).unwrap_or(false))))
+            .map(|_| {
+                s.spawn(|| {
+                    set_threads(1);
+                    (0..per_thread).all(|_| predict_text(flavor, &var, &int).map(|p| same(&p)).unwrap_or(false))
+                })
+            })
             .collect();
         handles.into_iter().all(|h| h.join().unwrap())
     });
-    let par = t1.elapsed().as_secs_f64();
+    let batch = t.elapsed().as_secs_f64();
 
-    println!("{} lines per run, thread-safe C library: {}", reference.lines.len(), pickett_sys::thread_safe());
-    println!("sequential: {repeat} runs in {seq:.3} s ({:.1} ms/run)", 1e3 * seq / repeat as f64);
-    println!(
-        "{threads} threads:  {} runs in {par:.3} s ({:.1} ms/run), speed-up {:.2}x, results identical: {same}",
-        per_thread * threads,
-        1e3 * par / (per_thread * threads) as f64,
-        (seq / repeat as f64) / (par / (per_thread * threads) as f64)
-    );
+    println!("{} lines, {} levels per run", reference.lines.len(), reference.levels.len());
+    println!("one run, 1 thread:        {:7.1} ms/run", ms(one, repeat));
+    println!("one run, all {} cores:     {:7.1} ms/run  ({:.2}x)", std::thread::available_parallelism()?.get(), ms(all, repeat), one / all);
+    println!("{threads} runs at once (batch): {:7.1} ms/run  ({:.2}x)", ms(batch, per_thread * threads), ms(one, repeat) / ms(batch, per_thread * threads));
+    println!("all results identical: {}", ok1 && ok2 && ok3);
     Ok(())
 }

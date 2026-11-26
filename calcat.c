@@ -52,6 +52,106 @@ SBLK *sblk_alloc(const int nstruct, const unsigned mxdm);
 static void ibufof_reset(void);
 static int calcat_body(int argc, char *argv[]);
 
+/****** partition function: recorded in the level loop, summed at the end ******/
+/* The level loop used to update all NTEMP sums for every level. Now it      */
+/* records one event per level (and per shift of the energy zero), and       */
+/* pf_compute() replays the events for each temperature. Each temperature    */
+/* gets the same operations in the same order as before, so the sums are     */
+/* unchanged, and different temperatures can be summed on different threads. */
+typedef struct {
+  double te;      /* exponent factor: Boltzmann factor is exp(te / T) */
+  double dgn;     /* degeneracy (level) */
+  int rescale;    /* 1: the energy zero moved, multiply the sums so far */
+} PFEV;
+static PK_TLS PFEV *pfev = NULL;
+static PK_TLS long npfev = 0, maxpfev = 0;
+
+static void pf_reset(void)
+{
+  free(pfev);
+  pfev = NULL;
+  npfev = maxpfev = 0;
+}
+
+static void pf_add(double te, double dgn, int rescale)
+{
+  PFEV *p;
+  long n;
+  if (npfev == maxpfev) {
+    n = (maxpfev != 0) ? 2 * maxpfev : 4096;
+    p = (PFEV *) realloc(pfev, (size_t) n * sizeof(PFEV));
+    if (p == NULL) {
+      puts("memory allocation error");
+      pk_fail(EXIT_FAILURE);
+    }
+    pfev = p;
+    maxpfev = n;
+  }
+  pfev[npfev].te = te;
+  pfev[npfev].dgn = dgn;
+  pfev[npfev].rescale = rescale;
+  ++npfev;
+}
+
+typedef struct {
+  const PFEV *ev;
+  long nev;
+  const double *temp;
+  double *qsum;
+  int ntemp;
+  double telim;
+} PFJOB;
+
+static void pf_part(void *ctx, int part, int nparts)
+{ /* sums for temperatures part, part + nparts, ...: the original loop, with */
+  /* levels outside and (decreasing) temperatures inside, on this subset    */
+  const PFJOB *job = (const PFJOB *) ctx;
+  const PFEV *ev;
+  const double *temp = job->temp;
+  double *qsum = job->qsum;
+  double te, dgn, tmp, telim = job->telim;
+  long i;
+  int k, ntemp = job->ntemp;
+  for (k = part; k < ntemp; k += nparts)
+    qsum[k] = 0.;
+  for (i = 0, ev = job->ev; i < job->nev; ++i, ++ev) {
+    te = ev->te;
+    if (ev->rescale != 0) {            /* adjust energy zero */
+      for (k = part; k < ntemp; k += nparts) {
+        tmp = te / temp[k];
+        if (tmp < telim)
+          tmp = telim;
+        qsum[k] *= exp(tmp);
+      }
+    } else {                           /* accumulate */
+      dgn = ev->dgn;
+      for (k = part; k < ntemp; k += nparts) {
+        tmp = te / temp[k];
+        if (tmp < telim)
+          break;                       /* smaller still at lower T */
+        qsum[k] += dgn * exp(tmp);
+      }
+    }
+  }
+}
+
+static void pf_compute(const double *temp, double *qsum, int ntemp, double telim)
+{
+  PFJOB job;
+  int n;
+  job.ev = pfev; job.nev = npfev; job.temp = temp; job.qsum = qsum;
+  job.ntemp = ntemp; job.telim = telim;
+  n = pk_get_threads();
+  if ((double) npfev * (double) ntemp < 2.0e6)
+    n = 1;   /* small job (measured): starting threads would cost more */
+  if (n > ntemp)
+    n = ntemp;
+  if (n > 1)
+    pk_run_parallel(pf_part, &job, n);
+  else
+    pf_part(&job, 0, 1);
+}
+
 /* Library entry point (pickett.h); the program's main() is in calcatm.c */
 int calcat_run(int argc, char *argv[])
 {
@@ -174,6 +274,7 @@ static int calcat_body(int argc, char *argv[])
     qsum[i] = 0.; /* static: reset for repeated runs in one process */
   }
   ibufof_reset();
+  pf_reset();
   sink = pk_get_sink();
   for (k = NTEMP - 2; k >= 0; --k) {
     if (fabs(tmq - temp[k]) < 0.01) {
@@ -531,22 +632,12 @@ static int calcat_body(int argc, char *argv[])
       if (egymin > egx) {     /*  adjust energy zero */
         te = tmc * (egymin - egx);
         egymin = egx;
-        for (k = 0; k < ntemp; ++k) {
-          tmp = te / temp[k];
-          if (tmp < telim)
-            tmp = telim;
-          qsum[k] *= exp(tmp);
-        }
+        pf_add(te, 0., 1);    /* summed in pf_compute() */
       }
-      /*  accumulate partition function values */
+      /*  accumulate partition function values (in pf_compute()) */
       te = tmc * (egx - egymin);
       dgn = (double) idgn;
-      for (k = 0; k < ntemp; ++k) {
-        tmp = te / temp[k];
-        if (tmp < telim)
-          break;
-        qsum[k] += dgn * exp(tmp);
-      }
+      pf_add(te, dgn, 0);
       if (sink != NULL && sink->level != NULL)
         sink->level(sink->user, iblk, i + 1, egx, err, pmix[i], idgn,
                     (globfmt != 0) ? ktsp : -1, maxqn, iqni);
@@ -766,6 +857,8 @@ static int calcat_body(int argc, char *argv[])
           qrot, egymin);
   printf(" NUMBER OF LINES = %6ld\n", nline);
   fprintf(luout," NUMBER OF LINES = %6ld\n", nline);
+  pf_compute(temp, qsum, ntemp, telim);
+  pf_reset();
   fputs(headq, stdout);
   fputs(headq, luout);
   for (i = 0; i < ntemp; ++i) {

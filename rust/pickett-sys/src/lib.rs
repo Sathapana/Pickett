@@ -84,6 +84,8 @@ pub mod ffi {
         pub fn pk_dpfit_run(argc: c_int, argv: *mut *mut c_char) -> c_int;
         pub fn pk_library_mode(on: c_int);
         pub fn pk_thread_safe() -> c_int;
+        pub fn pk_set_threads(n: c_int);
+        pub fn pk_get_threads() -> c_int;
 
         pub fn pk_vfs_begin();
         pub fn pk_vfs_end();
@@ -176,6 +178,22 @@ impl std::error::Error for RunError {}
 pub fn thread_safe() -> bool {
     // SAFETY: a pure query of a compile-time setting.
     unsafe { ffi::pk_thread_safe() != 0 }
+}
+
+/// Sets how many threads one run on the *calling* thread may use for its
+/// own work (currently the partition-function table of SPCAT/DPCAT).
+/// `0` means one per CPU core (the default); `1` means no extra threads,
+/// which is right when many runs already run in parallel. Results do not
+/// depend on this setting.
+pub fn set_threads(n: usize) {
+    // SAFETY: sets a per-thread integer in the C library.
+    unsafe { ffi::pk_set_threads(n.min(c_int::MAX as usize) as c_int) }
+}
+
+/// The number of threads a run on the calling thread would use now.
+pub fn threads() -> usize {
+    // SAFETY: reads a per-thread integer in the C library.
+    unsafe { ffi::pk_get_threads().max(1) as usize }
 }
 
 static LOCK: Mutex<()> = Mutex::new(());

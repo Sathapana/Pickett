@@ -425,9 +425,50 @@ TEMPERATURE - Q(SPIN-ROT.) - log Q(SPIN-ROT.)
       1.000         2.6347    0.4207
 ```
 
-To change the range, edit `TMAX` and set `NTEMP = TMAX + 1`. The grid step is fixed at 1 K. Each extra temperature adds one `exp()` per energy level, so the cost grows with `NTEMP`, but it is small next to diagonalisation. **Note:** Q is only meaningful if the calculation includes all levels that are populated at the highest temperature. Make sure `FEND`, `KNMAX` and the vibrational states you include are large enough for high-T values.
+To change the range, edit `TMAX` and set `NTEMP = TMAX + 1`. The grid step is fixed at 1 K. Each extra temperature adds one `exp()` per energy level, and for large catalogs this is the most expensive part of SPCAT (see [Speed of SPCAT](#speed-of-spcat)). **Note:** Q is only meaningful if the calculation includes all levels that are populated at the highest temperature. Make sure `FEND`, `KNMAX` and the vibrational states you include are large enough for high-T values.
 
 The `QROT` value on the `.int` line still sets the `.cat` intensities. The tabulated Q values are diagnostic output only and are **not** fed back automatically.
+
+### Speed of SPCAT
+
+**Where the time goes.** I profiled a copy of the code with timing wrappers around `hamx`, `hdiag`, `intens` and `calerr`, and timers around the loops in `calcat.c`. This is SPCAT on the golden cases, 64-bit gcc 16, `-O2`:
+
+| Part | CH₃CN prolate (17,236 levels) | SO₂-like asym (221 levels) |
+|---|---|---|
+| Partition-function sums, 1000 temperatures | 0.41 s (10.2 M `exp`) — about 60% | 0.015 s |
+| Printing the 1000-row Q table to stdout (a pipe) | 0.09 s | 0.08 s |
+| Hamiltonian set-up and diagonalisation (`hamx`, incl. `hdiag`) | 0.009 s — **1.4%** | < 0.001 s |
+| Intensities (`intens`) and line errors (`calerr`) | 0.005 s | < 0.001 s |
+| Total | 0.69 s | 0.13 s |
+
+The largest matrix in these cases is 51×51. For SPFIT, `hamx` is 4–15% of a 13–16 ms run. Replacing the 1968 EISPACK diagonaliser (`hdiag`/`triag`) with LAPACK would therefore gain almost nothing here. It would also mean a new dependency and a risky change to the eigenvector order that `ordblk()` uses to assign quantum numbers. That change only becomes worth it for models with much larger blocks; profile such a model first.
+
+**What was done instead: parallel partition sums, with unchanged results.**
+- The level loop no longer updates all 1000 sums for every level. It records one event per level, and one per shift of the energy zero (`pf_add`).
+- At the end, `pf_compute()` runs the original loop on those events, levels outside and decreasing temperatures inside, with the early `break` kept.
+- The temperatures are split into interleaved subsets (`k = part, part + n, …`), one per thread (`pk_run_parallel` in [pktmp.c](pktmp.c)).
+- Each temperature still gets the same operations in the same order, so the sums are **bit-identical** to the old code. This was checked by comparing the `.out`, `.cat`, `.egy` and `.str` of all three SPCAT/DPCAT golden cases, built from the previous commit and from this one with the same compiler, with 1 and 8 threads (22 comparisons, all identical).
+- Workers set the same x87 precision as the run (`pk_fpu_enter`).
+- Small jobs (fewer than 2×10⁶ level×temperature pairs) stay on one thread, because starting threads cost more for them.
+
+**Choosing the number of threads.** In order of precedence:
+- `pk_set_threads(n)` from C, or `pickett_sys::set_threads(n)` from Rust;
+- the `PICKETT_THREADS` environment variable;
+- otherwise one thread per core.
+
+The setting belongs to the calling thread. `pickett::predict_parallel` sets 1 in its workers, because there every core already runs a whole prediction.
+
+**Measured** (8 cores, Windows 11; the machine had 25–40% background load, so single numbers vary by up to ±30%):
+
+| | prolate (2314 lines) | asym (198 lines) |
+|---|---|---|
+| Executable, previous version vs new, mean of 5 interleaved runs | 1461 ms → 1452 ms (1 thread) / 934 ms (all cores) | — |
+| `pickett::predict`, 1 thread → all cores | 0.94–1.11 s → 0.56–0.80 s (1.2–2.0×) | unchanged (stays on one thread) |
+| `predict_parallel`, 8 at once, per prediction | 0.36–0.40 s | 28 ms |
+
+```sh
+cargo run --release -p pickett --example bench -- ../test/golden/spcat_prolate/input/prolate.var ../test/golden/spcat_prolate/input/prolate.int 16 8
+```
 
 ---
 
@@ -582,6 +623,7 @@ let cat = pickett_io::CatFile::parse(&std::fs::read_to_string("data/mol.cat")?)?
 |---|---|
 | `run(program, args)` | Same arguments as the command line, e.g. `["mol"]` |
 | `run_in(program, dir, base)` | Passes every `<dir>/<base>.<ext>` explicitly, so directory names with dots are safe |
+| `set_threads(n)`, `threads()` | Threads one run on the calling thread may use for its own work (0 = one per core) |
 | `run_memory(program, base, inputs)` | No files and no console output. Returns `MemoryRun`: `status`, `files` (every memory file after the run), `log` (the captured messages) and `records` (full-precision `cat_lines`, `levels`, `partition`, `fit_iterations`, `fit_params`) |
 | `RunError::Failed { program, status }` | A fatal error in the C code. The process keeps running. The message is on stdout, or in `MemoryRun::log` |
 | `ffi` | The raw `extern "C"` functions, including `PkSink` |
@@ -638,7 +680,7 @@ let q300 = spectrum.partition_at(300.0);
 |---|---|
 | `predict(flavor, &var, &int)`, `predict_text(flavor, var, int)` | `Prediction`: `lines` (full precision, sorted by frequency), `levels`, `partition`, `catalog` (the `.cat` as written), `report` (`.out`), `log`, `files`. `partition_at(T)` interpolates ln Q in ln T between table points |
 | `fit(flavor, &par, &lin)`, `fit_text(flavor, par, lin)` | `FitResult`: `params` (full precision), `iterations`, `par` and `var` (as `ParFile`, ready for the next fit or `predict`), `report` (`.fit`), `log`, `files`. `rms_error()` |
-| `predict_parallel(flavor, &jobs, threads)` | Many predictions at once, on all cores by default. Results come back in job order and equal `predict` for each job. Use it for parameter scans and Monte-Carlo error estimates |
+| `predict_parallel(flavor, &jobs, threads)` | Many predictions at once, on all cores by default, each prediction on one thread. Results come back in job order and equal `predict` for each job. Use it for parameter scans and Monte-Carlo error estimates |
 | `Error` | `Run` (with the program's `log`), `NoOutput` (e.g. SPFIT did no iteration), `Parse`, `BadArgument` |
 
 `Flavor::Spinv` runs SPCAT/SPFIT and `Flavor::Dpi` runs DPCAT/DPFIT.
@@ -689,7 +731,7 @@ The small case gains less because much of its time goes into the temporary files
 1. **Partition-function grid edge case.** If the `.int` `TEMP` is exactly 0, the 0 K grid point remains and causes a division by zero. `TEMP = 0` is not physically valid for SPCAT anyway.
 2. **Legacy C.** K&R definitions, `gets()` in the catalog utilities, and implicit `int main()` all trigger warnings. gcc 15+ (C23 by default) needs `-std=gnu17`.
 3. **The PDF manuals' text layer is font-mangled** (ligatures and Greek letters encoded oddly). Read them in a PDF viewer rather than extracting the text.
-4. **Library limits.** Memory is not freed after a failure in the middle of a calculation, and memory files go through temporary files (see [Library entry points](#library-entry-points-picketth)). Runs are parallel across threads, but a single run uses one core.
+4. **Library limits.** Memory is not freed after a failure in the middle of a calculation, and memory files go through temporary files (see [Library entry points](#library-entry-points-picketth)). Runs are parallel across threads. Within one run, only the partition-function table uses several cores.
 
 ### Fixed build issues
 

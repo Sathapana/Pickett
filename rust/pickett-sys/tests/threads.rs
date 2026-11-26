@@ -4,7 +4,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use pickett_sys::{run_memory, thread_safe, Program, Records};
+use pickett_sys::{run_memory, set_threads, thread_safe, threads, Program, Records};
 
 fn golden() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../test/golden")
@@ -112,4 +112,22 @@ fn a_failing_thread_does_not_disturb_others() {
             assert!(w.join().unwrap());
         }
     });
+}
+
+#[test]
+fn partition_table_does_not_depend_on_thread_count() {
+    let prolate = &cases()[0];
+    let mut tables = Vec::new();
+    for n in [1, 2, 3, 8, 0] {
+        set_threads(n);
+        assert_eq!(threads(), if n == 0 { std::thread::available_parallelism().unwrap().get() } else { n });
+        let (records, files) = run(prolate);
+        assert_eq!(records.partition.len(), 1000);
+        tables.push((n, records.partition, files));
+    }
+    set_threads(0);
+    for (n, t, f) in &tables[1..] {
+        assert!(*t == tables[0].1, "Q table with {n} threads differs from 1 thread");
+        assert!(*f == tables[0].2, "files with {n} threads differ from 1 thread");
+    }
 }
