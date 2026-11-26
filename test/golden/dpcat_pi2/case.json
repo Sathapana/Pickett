@@ -1,0 +1,6 @@
+{
+  "description": "DPCAT, NO-like 2Pi state, Hund's case (a), I=1 magnetic and quadrupole hyperfine, F <= 12, writes .cat .egy .str .out. Constants are illustrative.",
+  "steps": [{"program": "dpcat", "args": ["pi2"]}],
+  "outputs": ["pi2.cat", "pi2.egy", "pi2.out", "pi2.str"],
+  "compare": {"pi2.str": "numeric-abs"}
+}

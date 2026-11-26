@@ -1,0 +1,5 @@
+{
+  "description": "SPFIT, CH3CN symmetric top: 58 synthetic lines from test/prolate.cat (every 40th line, +-0.02 MHz noise, err 0.05 MHz); B, DJK, DJ floated from perturbed start values, C/DJK/DJ ties.",
+  "steps": [{"program": "spfit", "args": ["prolate"]}],
+  "outputs": ["prolate.fit", "prolate.par", "prolate.var", "prolate.bak"]
+}

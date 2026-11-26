@@ -8,3 +8,9 @@ The base version of this code was obtained from the [Cologne Database for Molecu
 
 This repository includes modifications by Kelvin Lee, primarily with modifications to the partition function routine to calculate the rotational partition function up to 1000 K programmatically without needing to repetitively call SPCAT.
 
+
+## Documentation
+
+- [documentation.md](documentation.md): developer guide (architecture, building, file formats, known issues)
+- [MANUAL_TH.md](MANUAL_TH.md): user manual in Thai (installation, quick start, file formats, troubleshooting)
+- [spinv.pdf](spinv.pdf), [dpi.pdf](dpi.pdf), [calpgm.pdf](calpgm.pdf): original manuals by H. M. Pickett

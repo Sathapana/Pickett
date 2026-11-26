@@ -16,3 +16,5 @@
 /reassign
 /sortegy
 /iambak
+# Rust build output
+/rust/target/

@@ -4,6 +4,8 @@ This repository holds the C source for **Herbert M. Pickett's CALPGM program sui
 
 This document covers how the code is organised, how to build and run it, the main file formats, and what this fork changes. The authoritative physics and input-format reference is still the set of PDF manuals that ship with the code (see [References](#references)).
 
+A user manual in Thai, with a step-by-step quick start and troubleshooting, is in [MANUAL_TH.md](MANUAL_TH.md).
+
 ---
 
 ## Contents
@@ -17,9 +19,10 @@ This document covers how the code is organised, how to build and run it, the mai
 7. [Fork modification: extended partition function](#fork-modification-extended-partition-function)
 8. [Test case and verification](#test-case-and-verification)
 9. [Auxiliary programs](#auxiliary-programs)
-10. [Legacy, alternate and unused files](#legacy-alternate-and-unused-files)
-11. [Known issues and caveats](#known-issues-and-caveats)
-12. [References](#references)
+10. [Rust file library: pickett-io](#rust-file-library-pickett-io)
+11. [Legacy, alternate and unused files](#legacy-alternate-and-unused-files)
+12. [Known issues and caveats](#known-issues-and-caveats)
+13. [References](#references)
 
 ---
 
@@ -81,7 +84,7 @@ e2a6f56 First commit based on HSPM's code from 2008
 | [spinv.pdf](spinv.pdf) | **Main reference** for SPFIT/SPCAT: quantum-number formats, `.lin`, `.par/.var`, `.int`, `.cat`, `.str`, `.egy` formats, operator and parameter IDs, special cases |
 | [dpi.pdf](dpi.pdf) | Reference for DPFIT/DPCAT parameters |
 | [whats.new](whats.new) | Upstream changelog, 1999–2007 |
-| [test/](test/) | CH₃CN prolate symmetric-top regression case (see [below](#test-case-and-verification)) |
+| [test/](test/) | CH₃CN prolate symmetric-top reference case (see [below](#test-case-and-verification)), plus the golden-output regression suite in `test/golden/` and its runner `test/run_golden.py` (see [Regression tests](#regression-tests)) |
 | [README.md](README.md) | Short project description |
 
 ---
@@ -361,7 +364,32 @@ diff prolate.out ../test/prolate.out     # only the timestamp line differs on Li
 
 This was checked on Windows 11 with MinGW gcc 6.3: `.cat` and `.egy` are byte-identical to the reference. `.out` differs only in the run timestamp and in Windows' three-digit exponent format (`E+005` vs `E+05`) in the echoed parameter table.
 
-There is no automated test harness. `test/` is the only regression reference, and it covers only SPCAT (not SPFIT, DPFIT or the utilities).
+### Regression tests
+
+[test/run_golden.py](test/run_golden.py) checks the programs against known-good outputs in [test/golden/](test/golden/). It needs Python 3.6+ (standard library only), `make` (or `mingw32-make`) and gcc. One command builds and runs every case and reports pass/fail per file:
+
+```sh
+python test/run_golden.py
+```
+
+The cases cover SPCAT and SPFIT (the prolate case above, plus an asymmetric top), DPCAT and DPFIT (a ²Π state with hyperfine), and calbak. [test/golden/README.md](test/golden/README.md) describes each case and how its inputs were made. Each case runs in a fresh temporary directory, which is kept for inspection if anything fails. The exit status is non-zero on any failure.
+
+How files are compared:
+
+* `.cat` and `.egy` must match exactly. Only CRLF vs LF is ignored.
+* All other files are compared token by token. Timestamps are masked and Windows' 3-digit exponents (`E+005`) are treated as `E+05`. Integers must be equal. Floats must agree within `max(rtol·|x|, 1 unit in the last printed digit)`, with `rtol = 1e-6` by default.
+* `.str` dipoles are compared by magnitude, because their sign follows the arbitrary eigenvector phase.
+
+Useful options:
+
+```sh
+python test/run_golden.py -k spfit                      # only cases whose name contains "spfit"
+python test/run_golden.py --no-build                    # use the executables already built
+python test/run_golden.py --clean --make-arg CFLAGS=-O0 # clean rebuild with other flags
+python test/run_golden.py --update -k dpfit             # accept new outputs (review the git diff!)
+```
+
+All cases pass with the default `-O3` (x87) build, and also with `-O0` and `-O2 -msse2 -mfpmath=sse` builds (MinGW gcc 6.3, Windows 11). The SSE build changes the fitted constants by about 1e-10 relative, which is well inside the tolerance. Any change to the C code should keep `python test/run_golden.py` passing.
 
 ---
 
@@ -383,6 +411,52 @@ There is no automated test harness. `test/` is the only regression reference, an
 | `hundscvt` | [hundscvt.c](hundscvt.c) | Converts quantum-number labels between Hund's case (a) and (b) |
 
 The JPL catalog-access utilities ([catread.c](catread.c), [catread.h](catread.h), [catlist.c](catlist.c), [catform.c](catform.c)) read the JPL catalog directory structure. `catform.c` is a CGI web-form handler. They use old K&R C and `gets()`, and none of the makefiles builds them.
+
+---
+
+## Rust file library: pickett-io
+
+[rust/pickett-io](rust/pickett-io) is a Rust crate that reads and writes the suite's files without running the programs. It has no dependencies. It is step 1 of turning the suite into a library; later steps will call the C Hamiltonian code in-process.
+
+| Type | Files | Reader follows | Writer format |
+|---|---|---|---|
+| `ParFile` | `.par`, `.var`, `.bak` | `calfit.c` line 2, `setopt()` option lines, `getpar()`, `getvar()` | SPFIT (`calfit.c`, `putvar()`) |
+| `LinFile` | `.lin` | `getlin()` | `calbak.c` |
+| `IntFile` | `.int` | `calcat.c` | plain, lossless (no C program writes `.int`) |
+| `CatFile` | `.cat` (also `.mrg`) | fixed JPL/CDMS columns, `readqn()` | SPCAT (`calcat.c`, `gupfmt()`) |
+| `EgyFile` | `.egy` | `calcat.c` level lines; other lines kept as text | SPCAT |
+
+The building blocks are public too:
+- `pcard::pcard` is the C free-format number reader. Numbers can run together (`0.31-0.07`), `,,` skips a field and `/` ends the line.
+- `ParamId` holds BCD parameter and dipole IDs as digit strings, so long IDs are not truncated.
+- `qn` encodes the two-character quantum fields (`A0` = 100, `a1` = −11).
+- `cfmt` gives C `printf` formats with a selectable `%E` exponent width.
+
+```sh
+cd rust
+cargo test                                   # unit tests + golden round trips
+cargo run --example cat_summary -- ../test/golden/spcat_prolate/expected/prolate.cat
+cargo run --example roundtrip -- ../test/golden/spfit_asym/expected/asym.var
+cargo doc --open                             # API documentation
+```
+
+```rust
+use pickett_io::{CatFile, Flavor, ParFile};
+
+let var = ParFile::parse(&std::fs::read_to_string("mol.var")?, Flavor::Spinv)?;
+for p in &var.params {
+    println!("{} {} ± {:?} {}", p.id, p.value, p.error, p.label);
+}
+let cov = var.covariance();          // packed upper triangle, as SPFIT writes it
+let cat = CatFile::parse(&std::fs::read_to_string("mol.cat")?)?;
+```
+
+Points to know:
+- **Option lines depend on the module.** Pass `Flavor::Spinv` for SPFIT/SPCAT files: option lines continue while `VSYM` is negative. Pass `Flavor::Dpi` for DPFIT/DPCAT files: there is exactly one option line.
+- **Round-trip guarantee.** `tests/golden.rs` reads all 29 `.par/.var/.bak/.lin/.int/.cat/.mrg/.egy` files under `test/golden/`, writes them back and parses them again. The data must be unchanged in every case. All 25 files written by the C programs come back byte-identical. The exceptions are the 3 `.int` files and one hand-typed `.var` value, as listed in `reformatted_ok()`.
+- **Exponent width.** The old Microsoft C runtime used by MinGW writes 3 exponent digits (`E+005`), while glibc writes 2. Each file type remembers what it read in `exp_digits` and writes it back the same way.
+- **Number values** are the correctly rounded `f64` of the decimal text. The C reader builds numbers digit by digit, so in rare cases it can differ by one unit in the last place.
+- **Not covered yet:** `.str`, `.fit`, `.out`, and files with more than 6 quanta per state in `.cat`. `LinFile::parse_with_nqn` does handle wider `.lin` files.
 
 ---
 
@@ -429,4 +503,5 @@ These were present in the 2008/2020 code and have been fixed:
 * H. M. Pickett, "Use of Euler series to fit spectra with application to water," *J. Mol. Spectrosc.* **233**, 174–179 (2005).
 * J. E. Dennis & R. B. Schnabel, *Numerical Methods for Unconstrained Optimization and Nonlinear Equations*, Prentice-Hall (1983). (Trust-region Marquardt)
 * Bundled manuals: [calpgm.pdf](calpgm.pdf), [spinv.pdf](spinv.pdf), [dpi.pdf](dpi.pdf)
+* Thai user manual: [MANUAL_TH.md](MANUAL_TH.md)
 * CDMS Pickett program page: <https://cdms.astro.uni-koeln.de/classic/predictions/pickett/quelle/>
